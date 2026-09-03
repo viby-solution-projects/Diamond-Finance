@@ -30,7 +30,7 @@ export function localRepository() {
         const stored = localStorage.getItem(STORAGE_KEY);
         if (!stored) return clone(seedData);
         const data = JSON.parse(stored);
-        if (!data.transactions || !data.dealers || !data.payments) throw new Error('Invalid data');
+        if (!Array.isArray(data.transactions) || !Array.isArray(data.dealers) || !Array.isArray(data.payments)) throw new Error('Invalid data');
         return data;
       } catch { return clone(seedData); }
     },
@@ -38,5 +38,5 @@ export function localRepository() {
   };
 }
 export function money(value) { return `₹${Math.round(value || 0).toLocaleString('en-IN')}`; }
-export function transactionRows(data) { return data.transactions.map(item => { const dealer = data.dealers.find(entry => entry.id === item.dealerId); return [item.id, dealer?.name || 'Unknown dealer', new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }), money(item.amount), item.status]; }); }
+export function transactionRows(data) { return data.transactions.map(item => { const dealer = data.dealers.find(entry => entry.id === item.dealerId); return [item.id, dealer?.name || 'Unknown dealer', new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }), money(item.amount), item.status, item.name]; }); }
 export function nextId(prefix, items) { return `${prefix}-${String(Math.max(0, ...items.map(item => Number(item.id.split('-').pop()) || 0)) + 1).padStart(4, '0')}`; }
