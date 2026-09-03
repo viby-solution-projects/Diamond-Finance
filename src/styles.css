@@ -1,4 +1,28 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap');
+/* Mobile data-density presentation */
+.mobile-data-list,.mobile-dealers,.mobile-earnings,.mobile-payments{display:none}
+@media(max-width:767px){
+	.desktop-data-table{display:none!important}
+	.mobile-data-list{display:flex;flex-direction:column}
+	.mobile-data-item{border-bottom:1px solid var(--line)}
+	.mobile-data-item:last-child{border-bottom:0}
+	.mobile-data-row{display:flex;align-items:center;gap:8px;min-height:82px;padding:14px 16px;cursor:pointer}
+	.mobile-chevron{display:grid;place-items:center;flex:none;color:var(--blue)}
+	.mobile-data-copy{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
+	.mobile-data-copy b{font-size:12px;line-height:1.25;overflow-wrap:anywhere}
+	.mobile-data-copy small{font-size:10px;color:var(--ink);overflow-wrap:anywhere}
+	.mobile-data-copy span{font-size:10px;color:var(--muted)}
+	.mobile-data-value{display:flex;flex-direction:column;align-items:flex-end;gap:7px;flex:none;max-width:42%}
+	.mobile-data-value strong{font-family:Manrope;font-size:12px;text-align:right;overflow-wrap:anywhere}
+	.mobile-data-details{display:grid;grid-template-columns:1fr 1fr;gap:11px 16px;padding:0 42px 16px 48px;background:#fbfcfe;border-top:1px solid #edf0f4}
+	.mobile-data-details>div{display:flex;flex-direction:column;gap:3px;padding-top:12px;min-width:0}
+	.mobile-data-details span{color:var(--muted);font-size:9px}
+	.mobile-data-details b{font-size:11px;overflow-wrap:anywhere}
+	.mobile-data-details .link-btn{grid-column:1/-1;padding:5px 0;justify-self:start}
+	.desktop-dealers,.desktop-earnings{display:none}
+	.mobile-dealers,.mobile-earnings{display:block}
+	.mobile-dealers .page-header,.mobile-earnings .page-header{margin-bottom:20px}
+}
 .detail-layout{display:grid;grid-template-columns:1fr 1fr;gap:20px}.detail-layout .items-panel{grid-column:1/-1}.detail-amount{padding:20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:15px}.detail-amount span{color:var(--muted);font-size:11px}.detail-amount strong{font-family:Manrope;font-size:23px;margin-right:auto}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;padding:20px}.detail-grid.single{grid-template-columns:1fr;padding-top:4px}.detail{display:flex;flex-direction:column;gap:5px}.detail span{font-size:10px;color:var(--muted)}.detail b{font-size:12px;font-weight:600}.profile-card{display:flex;align-items:center;gap:12px;padding:18px 20px}.profile-card>div:nth-child(2){display:flex;flex-direction:column;gap:5px}.profile-card b{font-size:13px}.profile-card small{font-size:10px;color:var(--muted)}.profile-card .link-btn{padding:0;margin-top:3px}.dealer-avatar.large{width:38px;height:38px}.item-row{margin:0 20px;padding:17px 0;display:flex;align-items:center;gap:11px}.item-row>div:nth-child(2){flex:1;display:flex;flex-direction:column;gap:4px}.item-row b{font-size:12px}.item-row small{font-size:10px;color:var(--muted)}.item-row strong{font-size:12px}.gem-icon{display:grid;place-items:center;width:37px;height:37px;border-radius:7px;background:#eef3ff;color:var(--blue)}.form-panel{max-width:790px}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:19px;padding:22px 20px}.form-grid label,.settings-panel label{font-size:11px;font-weight:600}.form-grid input,.form-grid select,.form-grid textarea{display:block;width:100%;margin-top:7px;border:1px solid var(--line);border-radius:5px;padding:0 10px;height:39px;outline:0;font-size:12px;color:var(--ink);background:#fff}.form-grid textarea{height:85px;padding-top:10px;resize:vertical}.form-grid .full{grid-column:1/-1}.form-panel .form-actions{display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--line);padding:17px 20px}.dealer-profile-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}.dealer-profile-head .profile-card{padding:15px 20px}.dealer-profile-head .profile-card h2{font-family:Manrope;font-size:16px;margin:0}.dealer-profile-head .status{margin-top:3px;width:max-content}
 :root{--mobile-header-brand:12px}.mobile-brand{display:none}
 :root{font-family:'DM Sans',sans-serif;color:#1b2638;background:#f6f8fb;font-synthesis:none;--ink:#1b2638;--muted:#7d899c;--line:#e5eaf0;--blue:#2364e8;--blue-soft:#eaf1ff;--green:#16845b;--green-soft:#e9f7f0;--yellow:#c78b0a;--yellow-soft:#fff7df;--panel:#fff}
