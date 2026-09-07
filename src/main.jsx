@@ -991,9 +991,19 @@ function NewTransaction({ onNavigate }) {
               Total amount
               <input
                 name="amount"
+                type="text"
+                inputMode="decimal"
+                pattern="[0-9.]*"
                 value={form.amount}
-                onChange={set}
-                placeholder="â‚¹ 0.00"
+                onChange={(event) =>
+                  setForm((previous) => ({
+                    ...previous,
+                    amount: event.target.value
+                      .replace(/[^0-9.]/g, "")
+                      .replace(/(\..*)\./g, "$1"),
+                  }))
+                }
+                placeholder={"\u20b9 0.00"}
                 required
               />
             </label>
