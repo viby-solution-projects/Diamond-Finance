@@ -2,7 +2,6 @@ import React, { createContext, useContext, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   BarChart3,
-  Bell,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -11,7 +10,6 @@ import {
   FileBarChart,
   Gem,
   Grid2X2,
-  HelpCircle,
   Menu,
   Plus,
   Search,
@@ -198,23 +196,6 @@ function App() {
             </div>
             <div className="top-actions">
               <button
-                className="icon-btn"
-                aria-label="Help"
-                onClick={() => setMenu(menu === "help" ? null : "help")}
-              >
-                <HelpCircle size={19} />
-              </button>
-              <button
-                className="icon-btn notification"
-                aria-label="Notifications"
-                onClick={() =>
-                  setMenu(menu === "notifications" ? null : "notifications")
-                }
-              >
-                <Bell size={19} />
-                <i />
-              </button>
-              <button
                 className="avatar"
                 aria-label="Open profile"
                 onClick={() => setMenu(menu === "profile" ? null : "profile")}
@@ -227,29 +208,13 @@ function App() {
               >
                 Jordan Davis <ChevronDown size={14} />
               </button>
-              {menu && (
+              {menu === "profile" && (
                 <div className="top-menu">
-                  {menu === "help" && (
-                    <>
-                      <b>Help center</b>
-                      <span>Support is available for your workspace.</span>
-                    </>
-                  )}
-                  {menu === "notifications" && (
-                    <>
-                      <b>Notifications</b>
-                      <span>No new notifications.</span>
-                    </>
-                  )}
-                  {menu === "profile" && (
-                    <>
-                      <b>Jordan Davis</b>
-                      <button onClick={() => go("/settings")}>
-                        Account settings
-                      </button>
-                      <button onClick={() => setMenu(null)}>Sign out</button>
-                    </>
-                  )}
+                  <b>Jordan Davis</b>
+                  <button onClick={() => go("/settings")}>
+                    Account settings
+                  </button>
+                  <button onClick={() => setMenu(null)}>Sign out</button>
                 </div>
               )}
             </div>
