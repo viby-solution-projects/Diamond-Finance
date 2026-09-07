@@ -149,15 +149,51 @@ function App() {
             >
               <Menu size={20} />
             </button>
-            <div className="mobile-brand">
+            <div
+              className="mobile-brand"
+              onClick={() => go("/")}
+              style={{ cursor: "pointer" }}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && go("/")}
+            >
               <div className="brand-mark">
                 <Gem size={16} />
               </div>
               <span>Diamond Finance</span>
             </div>
             <div className="crumb">
-              <span>Workspace</span>
+              <button
+                type="button"
+                className="crumb-btn"
+                onClick={() => go("/")}
+              >
+                Workspace
+              </button>
               <ChevronRight size={14} />
+              {current === "Transaction Details" || current === "New Transaction" ? (
+                <>
+                  <button
+                    type="button"
+                    className="crumb-btn"
+                    onClick={() => go("/transactions")}
+                  >
+                    Transactions
+                  </button>
+                  <ChevronRight size={14} />
+                </>
+              ) : current === "Dealer Profile" ? (
+                <>
+                  <button
+                    type="button"
+                    className="crumb-btn"
+                    onClick={() => go("/dealers")}
+                  >
+                    Dealers
+                  </button>
+                  <ChevronRight size={14} />
+                </>
+              ) : null}
               <strong>{current}</strong>
             </div>
             <div className="top-actions">
@@ -236,14 +272,26 @@ function Sidebar({ current, onNavigate, open, onClose }) {
     <>
       {open && <div className="scrim" onClick={onClose} />}
       <aside className={"sidebar " + (open ? "open" : "")}>
-        <div className="brand">
+        <div
+          className="brand"
+          onClick={() => onNavigate("/")}
+          style={{ cursor: "pointer" }}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) =>
+            (e.key === "Enter" || e.key === " ") && onNavigate("/")
+          }
+        >
           <div className="brand-mark">
             <Gem size={20} />
           </div>
           <span>Diamond Finance</span>
           <button
             className="icon-btn close-menu"
-            onClick={onClose}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
             aria-label="Close navigation"
           >
             <X size={18} />
@@ -307,17 +355,36 @@ function Page({ current, onNavigate }) {
     return <DealerProfile onNavigate={onNavigate} />;
   if (current === "Dealers") return <Dealers onNavigate={onNavigate} />;
   if (current === "Payments") return <Payments onNavigate={onNavigate} />;
-  if (current === "Earnings") return <Earnings />;
-  if (current === "Reports") return <Reports />;
-  if (current === "Settings") return <SettingsPage />;
+  if (current === "Earnings") return <Earnings onNavigate={onNavigate} />;
+  if (current === "Reports") return <Reports onNavigate={onNavigate} />;
+  if (current === "Settings") return <SettingsPage onNavigate={onNavigate} />;
   return <Transactions onNavigate={onNavigate} />;
 }
 
-function PageHeader({ eyebrow, title, description, action }) {
+function PageHeader({
+  eyebrow,
+  title,
+  description,
+  action,
+  backTo,
+  backLabel,
+  onNavigate,
+}) {
   return (
     <div className="page-header">
       <div>
-        <div className="eyebrow">{eyebrow}</div>
+        {backTo && onNavigate && (
+          <button
+            type="button"
+            className="back-link"
+            onClick={() => onNavigate(backTo)}
+            aria-label={backLabel || "Back"}
+          >
+            <ChevronLeft size={14} />
+            <span>{backLabel || "Back to Dashboard"}</span>
+          </button>
+        )}
+        {eyebrow && <div className="eyebrow">{eyebrow}</div>}
         <h1>{title}</h1>
         {description && <p>{description}</p>}
       </div>
@@ -662,6 +729,9 @@ function Transactions({ onNavigate }) {
   return (
     <>
       <PageHeader
+        backTo="/"
+        backLabel="Back to Dashboard"
+        onNavigate={onNavigate}
         eyebrow="Manage"
         title="Transactions"
         description="Track and manage all your diamond transactions."
@@ -755,18 +825,14 @@ function TransactionDetails({ onNavigate }) {
   return (
     <>
       <PageHeader
+        backTo="/transactions"
+        backLabel="Back"
+        onNavigate={onNavigate}
         eyebrow="Transactions"
         title={transaction.name}
         description="Transaction details and payment timeline."
         action={
           <div className="header-actions">
-            <Button
-              secondary
-              onClick={() => onNavigate("/transactions")}
-              icon={ChevronLeft}
-            >
-              Back
-            </Button>
             <Button
               secondary
               onClick={() =>
@@ -921,6 +987,9 @@ function NewTransaction({ onNavigate }) {
   return (
     <>
       <PageHeader
+        backTo="/transactions"
+        backLabel="Back"
+        onNavigate={onNavigate}
         eyebrow="Transactions"
         title="New transaction"
         description="Add a new diamond transaction to your records."
@@ -1070,6 +1139,9 @@ function DealerProfile({ onNavigate }) {
   return (
     <>
       <PageHeader
+        backTo="/dealers"
+        backLabel="Back"
+        onNavigate={onNavigate}
         eyebrow="Dealers"
         title={dealer.name}
         description="Dealer profile and transaction history."
@@ -1160,6 +1232,9 @@ function DesktopDealers({ onNavigate }) {
   return (
     <>
       <PageHeader
+        backTo="/"
+        backLabel="Back to Dashboard"
+        onNavigate={onNavigate}
         eyebrow="Manage"
         title="Dealers"
         description="Manage your network of diamond dealers."
@@ -1314,7 +1389,7 @@ function MobilePaymentCards({ items }) {
   return <div className="mobile-data-list payment-card-list">{items.map(item => <div className="mobile-card-item" key={item.id}><div className="mobile-card-main"><div className="mobile-card-copy"><b>{item.title}</b><span>{item.subtitle}</span></div><div className="mobile-card-amount">{item.amount}</div></div><div className="mobile-card-meta"><span>{item.meta}</span><Status>{item.status}</Status></div></div>)}</div>;
 }
 
-function DesktopPayments() {
+function DesktopPayments({ onNavigate }) {
   const { data, addPayment } = useData();
   const [open, setOpen] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState("All");
@@ -1378,6 +1453,9 @@ function DesktopPayments() {
   return (
     <>
       <PageHeader
+        backTo="/"
+        backLabel="Back to Dashboard"
+        onNavigate={onNavigate}
         eyebrow="Finance"
         title="Payments"
         description="Review incoming and outgoing payments."
@@ -1482,7 +1560,7 @@ function DesktopPayments() {
     </>
   );
 }
-function DesktopEarnings() {
+function DesktopEarnings({ onNavigate }) {
   const { data } = useData();
   const [period, setPeriod] = useState("This month");
   const total = data.transactions.reduce(
@@ -1495,6 +1573,9 @@ function DesktopEarnings() {
   return (
     <>
       <PageHeader
+        backTo="/"
+        backLabel="Back to Dashboard"
+        onNavigate={onNavigate}
         eyebrow="Finance"
         title="Earnings overview"
         description="Track your brokerage income and performance."
@@ -1597,7 +1678,7 @@ function DesktopEarnings() {
     </>
   );
 }
-function Reports() {
+function Reports({ onNavigate }) {
   const { data } = useData();
   const sales = data.transactions.reduce((sum, item) => sum + item.amount, 0);
   const pending = data.transactions
@@ -1614,6 +1695,9 @@ function Reports() {
   return (
     <>
       <PageHeader
+        backTo="/"
+        backLabel="Back to Dashboard"
+        onNavigate={onNavigate}
         eyebrow="Performance"
         title="Reports"
         description="Understand your business performance across sales, activity and dealer results."
@@ -1763,6 +1847,9 @@ function Dealers({ onNavigate }) {
       </div>
       <div className="mobile-dealers">
         <PageHeader
+          backTo="/"
+          backLabel="Back to Dashboard"
+          onNavigate={onNavigate}
           eyebrow="Manage"
           title="Dealers"
           description="Manage your network of diamond dealers."
@@ -1808,7 +1895,7 @@ function Payments({ onNavigate }) {
   return (
     <>
       <div className="desktop-payments">
-        <DesktopPayments />
+        <DesktopPayments onNavigate={onNavigate} />
       </div>
       <div className="mobile-payments">
         <MobilePayments onNavigate={onNavigate} />
@@ -1836,6 +1923,9 @@ function MobilePayments({ onNavigate }) {
   return (
     <>
       <PageHeader
+        backTo="/"
+        backLabel="Back to Dashboard"
+        onNavigate={onNavigate}
         eyebrow="Finance"
         title="Payments"
         description="Review incoming and outgoing payments."
@@ -1869,19 +1959,19 @@ function MobilePayments({ onNavigate }) {
     </>
   );
 }
-function Earnings() {
+function Earnings({ onNavigate }) {
   return (
     <>
       <div className="desktop-earnings">
-        <DesktopEarnings />
+        <DesktopEarnings onNavigate={onNavigate} />
       </div>
       <div className="mobile-earnings">
-        <MobileEarnings />
+        <MobileEarnings onNavigate={onNavigate} />
       </div>
     </>
   );
 }
-function MobileEarnings() {
+function MobileEarnings({ onNavigate }) {
   const { data } = useData();
   const total = data.transactions.reduce(
     (sum, item) => sum + (item.amount * item.brokerageRate) / 100,
@@ -1901,6 +1991,9 @@ function MobileEarnings() {
   return (
     <>
       <PageHeader
+        backTo="/"
+        backLabel="Back to Dashboard"
+        onNavigate={onNavigate}
         eyebrow="Finance"
         title="Earnings overview"
         description="Track your brokerage income and performance."
@@ -1950,7 +2043,7 @@ function MobileEarnings() {
     </>
   );
 }
-function SettingsPage() {
+function SettingsPage({ onNavigate }) {
   const [settings, setSettings] = useState(loadSettings);
   const setField = (event) => {
     const { name, value, checked, type } = event.target;
@@ -1962,6 +2055,9 @@ function SettingsPage() {
   return (
     <>
       <PageHeader
+        backTo="/"
+        backLabel="Back to Dashboard"
+        onNavigate={onNavigate}
         eyebrow="Workspace"
         title="Settings"
         description="Manage your account, business details and operating preferences."
