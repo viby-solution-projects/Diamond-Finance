@@ -16,7 +16,6 @@ import {
   Plus,
   Search,
   Settings,
-  SlidersHorizontal,
   Store,
   Users,
   Wallet,
@@ -31,8 +30,10 @@ import {
 import "./styles.css";
 import {
   localRepository,
+  loadSettings,
   money,
   nextId,
+  saveSettings,
   transactionRows,
 } from "./data/repository";
 
@@ -584,8 +585,10 @@ function TransactionTable({ rows, onRowClick }) {
                 key={row[0]}
                 onClick={() => onRowClick?.(row[0])}
                 onKeyDown={(event) =>
-                  event.key === "Enter" && onRowClick?.(row[0])
+                  (event.key === "Enter" || event.key === " ") &&
+                  onRowClick?.(row[0])
                 }
+                role={onRowClick ? "button" : undefined}
                 tabIndex={onRowClick ? 0 : undefined}
                 className={onRowClick ? "clickable-row" : ""}
               >
@@ -1146,11 +1149,13 @@ function DealerProfile({ onNavigate }) {
 function DesktopDealers({ onNavigate }) {
   const { data } = useData();
   const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("All");
   const [notice, setNotice] = useState("");
   const list = data.dealers.filter((dealer) =>
     `${dealer.name} ${dealer.location}`
       .toLowerCase()
-      .includes(query.toLowerCase()),
+      .includes(query.toLowerCase()) &&
+    (status === "All" || dealer.status === status),
   );
   return (
     <>
@@ -1209,9 +1214,16 @@ function DesktopDealers({ onNavigate }) {
                 placeholder="Search dealers..."
               />
             </div>
-            <button className="filter">
-              <SlidersHorizontal size={15} /> Filters
-            </button>
+            <select
+              className="filter"
+              value={status}
+              onChange={(event) => setStatus(event.target.value)}
+              aria-label="Filter dealers by status"
+            >
+              <option value="All">All dealers</option>
+              <option value="Active">Active</option>
+              <option value="Inactive">Inactive</option>
+            </select>
           </div>
         }
       >
@@ -1239,6 +1251,12 @@ function DesktopDealers({ onNavigate }) {
                       onClick={() =>
                         onNavigate("/dealer-profile?id=" + dealer.id)
                       }
+                      onKeyDown={(event) =>
+                        (event.key === "Enter" || event.key === " ") &&
+                        onNavigate("/dealer-profile?id=" + dealer.id)
+                      }
+                      tabIndex={0}
+                      role="button"
                       className="clickable-row"
                     >
                       <td>
@@ -1299,6 +1317,7 @@ function MobilePaymentCards({ items }) {
 function DesktopPayments() {
   const { data, addPayment } = useData();
   const [open, setOpen] = useState(false);
+  const [paymentStatus, setPaymentStatus] = useState("All");
   const [form, setForm] = useState({
     transactionId: data.transactions[0]?.id || "",
     amount: "",
@@ -1331,7 +1350,9 @@ function DesktopPayments() {
     setForm((previous) => ({ ...previous, amount: "" }));
     setError("");
   };
-  const paymentItems = data.payments.map((payment) => {
+  const paymentItems = data.payments
+    .filter((payment) => paymentStatus === "All" || payment.status === paymentStatus)
+    .map((payment) => {
     const dealer = data.dealers.find((item) => item.id === payment.dealerId);
     const transaction = data.transactions.find(
       (item) => item.id === payment.transactionId,
@@ -1353,7 +1374,7 @@ function DesktopPayments() {
         ["Status", payment.status],
       ],
     };
-  });
+    });
   return (
     <>
       <PageHeader
@@ -1401,7 +1422,16 @@ function DesktopPayments() {
               <input
                 name="amount"
                 value={form.amount}
-                onChange={set}
+                onChange={(event) =>
+                  setForm((previous) => ({
+                    ...previous,
+                    amount: event.target.value
+                      .replace(/[^0-9.]/g, "")
+                      .replace(/(\..*)\./g, "$1"),
+                  }))
+                }
+                inputMode="decimal"
+                pattern="[0-9.]*"
                 placeholder={"\u20b9 0.00"}
               />
             </label>
@@ -1435,9 +1465,16 @@ function DesktopPayments() {
       <Panel
         title="Payment history"
         action={
-          <button className="select">
-            All payments <ChevronDown size={14} />
-          </button>
+          <select
+            className="select"
+            value={paymentStatus}
+            onChange={(event) => setPaymentStatus(event.target.value)}
+            aria-label="Filter payments by status"
+          >
+            <option value="All">All payments</option>
+            <option value="Completed">Completed</option>
+            <option value="Pending">Pending</option>
+          </select>
         }
       >
         <MobilePaymentCards items={paymentItems} />
@@ -1447,6 +1484,7 @@ function DesktopPayments() {
 }
 function DesktopEarnings() {
   const { data } = useData();
+  const [period, setPeriod] = useState("This month");
   const total = data.transactions.reduce(
     (sum, item) => sum + (item.amount * item.brokerageRate) / 100,
     0,
@@ -1461,9 +1499,16 @@ function DesktopEarnings() {
         title="Earnings overview"
         description="Track your brokerage income and performance."
         action={
-          <button className="select">
-            <CalendarDays size={15} /> This month <ChevronDown size={14} />
-          </button>
+          <select
+            className="select"
+            value={period}
+            onChange={(event) => setPeriod(event.target.value)}
+            aria-label="Earnings period"
+          >
+            <option>This month</option>
+            <option>This quarter</option>
+            <option>This year</option>
+          </select>
         }
       />
       <div className="earnings-support">
@@ -1497,9 +1542,16 @@ function DesktopEarnings() {
       <Panel
         title="Earnings trend"
         action={
-          <button className="select">
-            This month <ChevronDown size={14} />
-          </button>
+          <select
+            className="select"
+            value={period}
+            onChange={(event) => setPeriod(event.target.value)}
+            aria-label="Earnings chart period"
+          >
+            <option>This month</option>
+            <option>This quarter</option>
+            <option>This year</option>
+          </select>
         }
         className="revenue-panel large-chart"
       >
@@ -1899,13 +1951,21 @@ function MobileEarnings() {
   );
 }
 function SettingsPage() {
+  const [settings, setSettings] = useState(loadSettings);
+  const setField = (event) => {
+    const { name, value, checked, type } = event.target;
+    setSettings((previous) => ({
+      ...previous,
+      [name]: type === "checkbox" ? checked : value,
+    }));
+  };
   return (
     <>
       <PageHeader
         eyebrow="Workspace"
         title="Settings"
         description="Manage your account, business details and operating preferences."
-        action={<Button>Save changes</Button>}
+        action={<Button onClick={() => saveSettings(settings)}>Save changes</Button>}
       />
 
       <div className="settings-page">
@@ -1916,12 +1976,12 @@ function SettingsPage() {
           <div className="settings-field-grid">
             <label className="settings-field">
               <span>Full name</span>
-              <input defaultValue="Jordan Davis" />
+              <input name="fullName" value={settings.fullName} onChange={setField} />
               <small>Used across your finance workspace.</small>
             </label>
             <label className="settings-field">
               <span>Business email</span>
-              <input defaultValue="jordan@diamond.com" />
+              <input name="email" type="email" value={settings.email} onChange={setField} />
               <small>Primary contact for alerts and exports.</small>
             </label>
           </div>
@@ -1934,12 +1994,12 @@ function SettingsPage() {
           <div className="settings-field-grid">
             <label className="settings-field">
               <span>Business name</span>
-              <input defaultValue="Diamond Broker" />
+              <input name="businessName" value={settings.businessName} onChange={setField} />
               <small>Displayed on reports and exports.</small>
             </label>
             <label className="settings-field">
               <span>Default currency</span>
-              <select defaultValue="INR">
+              <select name="currency" value={settings.currency} onChange={setField}>
                 <option value="INR">INR - Indian Rupee</option>
                 <option value="USD">USD - US Dollar</option>
               </select>
@@ -1947,7 +2007,7 @@ function SettingsPage() {
             </label>
             <label className="settings-field full-width-field">
               <span>Business address</span>
-              <input defaultValue="Bandra West, Mumbai, India" />
+              <input name="address" value={settings.address} onChange={setField} />
               <small>Optional detail for dealer records.</small>
             </label>
           </div>
@@ -1963,7 +2023,7 @@ function SettingsPage() {
                 <span>Payment reminders</span>
                 <small>Notify me when a payment or payout is pending.</small>
               </div>
-              <input type="checkbox" defaultChecked />
+              <input name="paymentReminders" type="checkbox" checked={settings.paymentReminders} onChange={setField} />
             </label>
             <label className="settings-toggle">
               <div>
@@ -1972,7 +2032,7 @@ function SettingsPage() {
                   Alert me when new activity is added to the workspace.
                 </small>
               </div>
-              <input type="checkbox" defaultChecked />
+              <input name="transactionAlerts" type="checkbox" checked={settings.transactionAlerts} onChange={setField} />
             </label>
           </div>
         </section>
@@ -1984,7 +2044,7 @@ function SettingsPage() {
           <div className="settings-field-grid">
             <label className="settings-field">
               <span>Time zone</span>
-              <select defaultValue="Asia/Kolkata">
+              <select name="timeZone" value={settings.timeZone} onChange={setField}>
                 <option value="Asia/Kolkata">Asia/Kolkata</option>
                 <option value="America/New_York">America/New_York</option>
               </select>
@@ -1992,7 +2052,7 @@ function SettingsPage() {
             </label>
             <label className="settings-field">
               <span>Default view</span>
-              <select defaultValue="Dashboard">
+              <select name="defaultView" value={settings.defaultView} onChange={setField}>
                 <option>Dashboard</option>
                 <option>Transactions</option>
                 <option>Reports</option>

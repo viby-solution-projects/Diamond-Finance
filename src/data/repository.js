@@ -1,4 +1,5 @@
 const STORAGE_KEY = 'diamond-finance-data-v1';
+const SETTINGS_KEY = 'diamond-finance-settings-v1';
 
 export const seedData = {
   transactions: [
@@ -36,6 +37,25 @@ export function localRepository() {
     },
     save(data) { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
   };
+}
+export const defaultSettings = {
+  fullName: 'Jordan Davis',
+  email: 'jordan@diamond.com',
+  businessName: 'Diamond Broker',
+  currency: 'INR',
+  address: 'Bandra West, Mumbai, India',
+  paymentReminders: true,
+  transactionAlerts: true,
+  timeZone: 'Asia/Kolkata',
+  defaultView: 'Dashboard',
+};
+export function loadSettings() {
+  try {
+    return { ...defaultSettings, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') };
+  } catch { return { ...defaultSettings }; }
+}
+export function saveSettings(settings) {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 export function money(value) { return `\u20b9${Math.round(value || 0).toLocaleString('en-IN')}`; }
 export function transactionRows(data) { return data.transactions.map(item => { const dealer = data.dealers.find(entry => entry.id === item.dealerId); return [item.id, dealer?.name || 'Unknown dealer', new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }), money(item.amount), item.status, item.name]; }); }
