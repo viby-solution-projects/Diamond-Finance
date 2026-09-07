@@ -37,6 +37,6 @@ export function localRepository() {
     save(data) { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
   };
 }
-export function money(value) { return `₹${Math.round(value || 0).toLocaleString('en-IN')}`; }
+export function money(value) { return `\u20b9${Math.round(value || 0).toLocaleString('en-IN')}`; }
 export function transactionRows(data) { return data.transactions.map(item => { const dealer = data.dealers.find(entry => entry.id === item.dealerId); return [item.id, dealer?.name || 'Unknown dealer', new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }), money(item.amount), item.status, item.name]; }); }
 export function nextId(prefix, items) { return `${prefix}-${String(Math.max(0, ...items.map(item => Number(item.id.split('-').pop()) || 0)) + 1).padStart(4, '0')}`; }

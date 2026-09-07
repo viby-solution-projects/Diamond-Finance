@@ -512,52 +512,6 @@ function Dashboard({ onNavigate }) {
             </button>
           }
         >
-          <div className="donut-wrap">
-            <div className="donut">
-              <div>
-                <b>{data.transactions.length}</b>
-                <span>Transactions</span>
-              </div>
-            </div>
-            <div className="legend">
-              <span>
-                <i className="blue" />
-                Completed{" "}
-                <b>
-                  {data.transactions.length
-                    ? Math.round(
-                        (data.transactions.filter(
-                          (item) => item.status === "Completed",
-                        ).length /
-                          data.transactions.length) *
-                          100,
-                      )
-                    : 0}
-                  %
-                </b>
-              </span>
-              <span>
-                <i className="yellow" />
-                Pending{" "}
-                <b>
-                  {data.transactions.length
-                    ? Math.round(
-                        (data.transactions.filter(
-                          (item) => item.status === "Pending",
-                        ).length /
-                          data.transactions.length) *
-                          100,
-                      )
-                    : 0}
-                  %
-                </b>
-              </span>
-              <span>
-                <i className="gray" />
-                Other <b>10%</b>
-              </span>
-            </div>
-          </div>
         </Panel>
       </div>
       <div className="dashboard-grid bottom-grid">
@@ -900,7 +854,7 @@ function TransactionDetails({ onNavigate }) {
             <div>
               <b>{transaction.status}</b>
               <small>
-                {transaction.date} Â· {transaction.paymentMethod}
+                {transaction.date} - {transaction.paymentMethod}
               </small>
             </div>
             <strong>{money(transaction.amount)}</strong>
@@ -1153,7 +1107,7 @@ function DealerProfile({ onNavigate }) {
           <div>
             <h2>{dealer.name}</h2>
             <small>
-              {dealer.location} Â· {dealer.contact}
+              {dealer.location} - {dealer.contact}
             </small>
             <Status>{dealer.status}</Status>
           </div>
@@ -1460,7 +1414,7 @@ function DesktopPayments() {
                 name="amount"
                 value={form.amount}
                 onChange={set}
-                placeholder="â‚¹ 0.00"
+                placeholder={"\u20b9 0.00"}
               />
             </label>
             <label>
@@ -1529,7 +1483,7 @@ function DesktopEarnings() {
           <div>
             <span>Total earnings</span>
             <strong>{money(total)}</strong>
-            <small>â†— Shared transaction data</small>
+            <small>Shared transaction data</small>
           </div>
           <div className="stat-icon">
             <CircleDollarSign size={17} />
@@ -1925,6 +1879,13 @@ function MobileEarnings() {
           <div>
             <span>Pending earnings</span>
             <strong>{money(pending)}</strong>
+            <small>
+              {
+                data.transactions.filter((item) => item.status !== "Completed")
+                  .length
+              }{" "}
+              pending transactions
+            </small>
           </div>
           <div className="stat-icon">
             <Wallet size={17} />

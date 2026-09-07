@@ -70,7 +70,6 @@ body,.app-shell,.main-area,.content{overflow-x:hidden}.table-scroll{overflow-x:v
 	.table-panel .table-id{font-size:10px}
 	.dealer-list{padding:5px 16px}
 	.dealer-row{min-width:0;padding:15px 0;gap:10px}
-	.dealer-row>div:nth-child(2){min-width:0}
 	.dealer-row b,.dealer-row small{overflow-wrap:anywhere}
 	.dealer-row strong{max-width:105px;text-align:right;white-space:normal;overflow-wrap:anywhere}
 	.form-panel,.grouped-form,.settings-panel{max-width:none;width:100%}
