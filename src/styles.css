@@ -173,6 +173,7 @@ body,.app-shell,.main-area,.content{overflow-x:hidden}.table-scroll{overflow-x:v
 .earned-field{display:flex;flex-direction:column;justify-content:center;gap:7px;min-height:64px}
 .earned-field span{font-size:11px;font-weight:600;color:var(--ink);text-transform:uppercase}
 .earned-field strong{font-family:Manrope;font-size:20px;color:var(--ink)}
+.dashboard-grid.revenue-grid{grid-template-columns:minmax(0,1fr)}
 @media(min-width:768px) and (max-width:1100px){
 	.party-flow{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:10px}
 	.party-connector{font-size:9px}

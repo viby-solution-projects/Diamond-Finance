@@ -478,7 +478,7 @@ function Dashboard({ onNavigate }) {
           icon={Wallet}
         />
       </div>
-      <div className="dashboard-grid">
+      <div className="dashboard-grid revenue-grid">
         <Panel
           title="Revenue overview"
           action={
@@ -500,18 +500,6 @@ function Dashboard({ onNavigate }) {
             </span>
           </div>
           <MiniChart />
-        </Panel>
-        <Panel
-          title="Transaction summary"
-          action={
-            <button
-              className="link-btn"
-              onClick={() => onNavigate("/transactions")}
-            >
-              View all <ArrowUpRight size={14} />
-            </button>
-          }
-        >
         </Panel>
       </div>
       <div className="dashboard-grid bottom-grid">
