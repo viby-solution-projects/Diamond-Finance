@@ -94,3 +94,25 @@ body,.app-shell,.main-area,.content{overflow-x:hidden}.table-scroll{overflow-x:v
 .table-id{display:block;color:var(--muted);font-size:9px;margin-top:3px}.notice{margin:-12px 0 18px;padding:9px 12px;border:1px solid #dbe7fb;background:#f2f6ff;color:#315ca9;border-radius:6px;font-size:11px}.button:disabled{cursor:not-allowed;opacity:.55}.dealer-row{cursor:pointer}.dealer-row:hover{background:#f7faff}
 .earnings-support{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}.support-card{padding:17px 18px;display:flex;justify-content:space-between;align-items:center}.support-card span{font-size:11px;color:var(--muted)}.support-card strong{font-family:Manrope;font-size:18px;display:block;margin-top:8px}.support-card small{font-size:10px;color:var(--green)}.support-card .stat-icon{flex:none}.breakdown-table{margin-top:20px}.report-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}.report-summary .stat{padding:14px 16px}.report-summary .stat>strong{font-size:18px;margin:8px 0 0}.report-summary .stat small{display:none}.report-layout{display:grid;grid-template-columns:1.1fr .9fr;gap:16px;align-items:start}.report-panel{min-width:0}.full-width-panel{grid-column:1 / -1}.report-card-body{padding:12px 0 0}.report-activity-list{display:grid;gap:12px;padding:16px}.report-activity-list>div{display:flex;flex-direction:column;gap:4px;padding:14px 12px;border:1px solid var(--line);border-radius:10px;background:#fafcff}.report-activity-list span{font-size:11px;color:var(--muted)}.report-activity-list strong{font-size:22px;font-family:Manrope}.report-activity-list small{font-size:10px;color:var(--muted)}.dealer-rankings{display:grid;gap:12px;padding:16px}.dealer-rank-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;padding:12px 10px;border:1px solid var(--line);border-radius:10px;background:#fff}.dealer-rank-badge{display:grid;place-items:center;width:32px;height:32px;border-radius:8px;background:#edf3ff;color:var(--blue);font-weight:700;font-size:11px}.dealer-rank-copy{display:flex;flex-direction:column;gap:2px;min-width:0}.dealer-rank-copy strong{font-size:13px}.dealer-rank-copy small{font-size:10px;color:var(--muted)}.dealer-rank-value{display:flex;flex-direction:column;align-items:flex-end;gap:3px}.dealer-rank-value b{font-size:13px}.dealer-rank-value span{font-size:10px;color:var(--muted)}.settings-page{display:flex;flex-direction:column;gap:18px}.settings-section{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}.settings-section-head{padding:16px 18px;border-bottom:1px solid var(--line)}.settings-section-head h2{margin:0;font-size:17px}.settings-field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;padding:18px}.settings-field,.settings-toggle{display:flex;flex-direction:column;gap:8px}.settings-field span,.settings-toggle span{font-size:11px;font-weight:600;color:var(--ink)}.settings-field input,.settings-field select{width:100%;min-height:42px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}.settings-field small,.settings-toggle small{font-size:10px;color:var(--muted)}.full-width-field{grid-column:1/-1}.settings-toggle{flex-direction:row;justify-content:space-between;align-items:center;gap:16px;padding:14px 12px;border:1px solid var(--line);border-radius:10px;background:#fafcff}.settings-toggle div{display:flex;flex-direction:column;gap:4px}.settings-toggle input{width:18px;height:18px;accent-color:var(--blue)}
 @media(max-width:767px){.report-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.report-summary .stat{min-width:0;overflow:hidden}.report-summary .stat>strong{font-size:18px;overflow-wrap:anywhere}.earnings-support{grid-template-columns:minmax(0,1fr)}.report-layout{grid-template-columns:1fr}.settings-field-grid{grid-template-columns:1fr}.settings-toggle{flex-direction:column;align-items:flex-start}.settings-toggle input{width:18px;height:18px}}
+
+/* Responsive layout boundaries: desktop, tablet, then phone. */
+@media(min-width:1024px){
+	.desktop-payments,.desktop-dealers,.desktop-earnings{display:block}
+	.mobile-payments,.mobile-dealers,.mobile-earnings{display:none}
+	.content{width:100%;margin-inline:auto}
+}
+@media(min-width:768px) and (max-width:1023px){
+	.desktop-payments,.desktop-dealers,.desktop-earnings{display:block}
+	.mobile-payments,.mobile-dealers,.mobile-earnings{display:none}
+	.dashboard-grid,.bottom-grid{grid-template-columns:minmax(0,1fr);gap:16px}
+	.content{width:100%;min-width:0}
+	.panel,.stat{min-width:0}
+	.page-header{min-width:0}
+}
+@media(max-width:767px){
+	.desktop-payments,.desktop-dealers,.desktop-earnings{display:none!important}
+	.mobile-payments,.mobile-dealers,.mobile-earnings{display:block}
+	.dashboard-grid,.bottom-grid{grid-template-columns:minmax(0,1fr)}
+	.content,.main-area{min-width:0}
+	.panel,.stat{min-width:0}
+}
