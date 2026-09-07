@@ -1309,7 +1309,7 @@ function DesktopDealers({ onNavigate }) {
   );
 }
 function MobilePaymentCards({ items }) {
-  return <div className="mobile-data-list">{items.map(item => <div className="mobile-card-item" key={item.id}><div className="mobile-card-main"><div className="mobile-card-copy"><b>{item.title}</b><span>{item.subtitle}</span></div><div className="mobile-card-amount">{item.amount}</div></div><div className="mobile-card-meta"><span>{item.meta}</span><Status>{item.status}</Status></div></div>)}</div>;
+  return <div className="mobile-data-list payment-card-list">{items.map(item => <div className="mobile-card-item" key={item.id}><div className="mobile-card-main"><div className="mobile-card-copy"><b>{item.title}</b><span>{item.subtitle}</span></div><div className="mobile-card-amount">{item.amount}</div></div><div className="mobile-card-meta"><span>{item.meta}</span><Status>{item.status}</Status></div></div>)}</div>;
 }
 
 function DesktopPayments() {
@@ -1456,43 +1456,6 @@ function DesktopPayments() {
           </button>
         }
       >
-        <div className="table-scroll desktop-data-table">
-          <table>
-            <thead>
-              <tr>
-                <th>Payment ID</th>
-                <th>Dealer</th>
-                <th>Method</th>
-                <th>Date</th>
-                <th>Amount</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.payments.map((payment) => {
-                const dealer = data.dealers.find(
-                  (item) => item.id === payment.dealerId,
-                );
-                return (
-                  <tr key={payment.id}>
-                    <td>
-                      <b>{payment.id}</b>
-                    </td>
-                    <td>{dealer?.name}</td>
-                    <td>{payment.method}</td>
-                    <td>{payment.date}</td>
-                    <td>
-                      <b>{money(payment.amount)}</b>
-                    </td>
-                    <td>
-                      <Status>{payment.status}</Status>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
         <MobilePaymentCards items={paymentItems} />
       </Panel>
     </>
