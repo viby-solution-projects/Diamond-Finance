@@ -165,3 +165,22 @@ body,.app-shell,.main-area,.content{overflow-x:hidden}.table-scroll{overflow-x:v
 	.grouped-form .form-panel select,
 	.grouped-form .form-panel textarea{min-width:0;min-height:42px}
 }
+
+.party-flow{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:18px;padding:22px 20px}
+.party-flow label{min-width:0;font-size:11px;font-weight:600}
+.party-flow select{display:block;width:100%;margin-top:7px;border:1px solid var(--line);border-radius:5px;padding:0 10px;height:39px;outline:0;font-size:12px;color:var(--ink);background:#fff}
+.party-connector{display:flex;align-items:center;gap:5px;color:var(--blue);font-size:10px;white-space:nowrap}
+.party-connector span{font-size:19px;line-height:1}
+.earned-field{display:flex;flex-direction:column;justify-content:center;gap:7px;min-height:64px}
+.earned-field span{font-size:11px;font-weight:600;color:var(--ink);text-transform:uppercase}
+.earned-field strong{font-family:Manrope;font-size:20px;color:var(--ink)}
+@media(min-width:768px) and (max-width:1100px){
+	.party-flow{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:10px}
+	.party-connector{font-size:9px}
+}
+@media(max-width:767px){
+	.party-flow{grid-template-columns:minmax(0,1fr);gap:14px;padding:18px 16px}
+	.party-connector{justify-content:center;flex-direction:column;gap:3px}
+	.party-connector span{font-size:18px;line-height:1;transform:rotate(90deg)}
+	.earned-field{min-height:42px}
+}

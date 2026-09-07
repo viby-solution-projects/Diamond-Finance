@@ -797,7 +797,8 @@ function TransactionDetails({ onNavigate }) {
     data.transactions[0]?.id;
   const transaction =
     data.transactions.find((item) => item.id === id) || data.transactions[0];
-  const dealer = data.dealers.find((item) => item.id === transaction?.dealerId);
+  const dealer = data.dealers.find((item) => item.id === (transaction?.sellerId || transaction?.dealerId));
+  const buyer = data.dealers.find((item) => item.id === transaction?.buyerId);
   if (!transaction)
     return (
       <Panel title="Transaction not found">
@@ -856,9 +857,15 @@ function TransactionDetails({ onNavigate }) {
             <Detail label="Transaction ID" value={transaction.id} />
             <Detail label="Transaction date" value={transaction.date} />
             <Detail label="Payment method" value={transaction.paymentMethod} />
+            <Detail label="Seller" value={dealer?.name || "Not selected"} />
+            <Detail label="Buyer" value={buyer?.name || "Not selected"} />
             <Detail
               label="Brokerage rate"
               value={`${transaction.brokerageRate}%`}
+            />
+            <Detail
+              label="Brokerage earned"
+              value={money(transaction.brokerageEarned ?? ((transaction.amount * transaction.brokerageRate) / 100))}
             />
           </div>
         </Panel>
@@ -917,13 +924,17 @@ function NewTransaction({ onNavigate }) {
     name: "",
     date: "2024-09-03",
     amount: "",
-    seller: "",
-    buyer: "",
+    sellerId: "",
+    buyerId: "",
     brokerageRate: "5",
     paymentMethod: "Bank transfer",
+    status: "Pending",
     notes: "",
   });
   const [error, setError] = useState("");
+  const amountValue = Number(form.amount) || 0;
+  const brokerageRateValue = Number(form.brokerageRate) || 0;
+  const brokerageEarned = amountValue * brokerageRateValue / 100;
   const set = (event) =>
     setForm((previous) => ({
       ...previous,
@@ -931,28 +942,33 @@ function NewTransaction({ onNavigate }) {
     }));
   const submit = (event) => {
     event.preventDefault();
-    const amount = Number(form.amount.replace(/[^0-9.]/g, ""));
+    const amount = Number(form.amount);
+    const brokerageRate = Number(form.brokerageRate);
     if (
       !form.name ||
       !form.date ||
       !form.amount ||
-      !form.seller ||
-      !form.buyer ||
-      !amount
-    )
-      return setError("Complete the required fields with a valid amount.");
-    const dealer =
-      data.dealers.find((item) => item.name === form.seller) || data.dealers[0];
+      !form.sellerId ||
+      !form.buyerId ||
+      !Number.isFinite(amount) ||
+      amount <= 0 ||
+      !Number.isFinite(brokerageRate) ||
+      brokerageRate < 0
+    ) return setError("Complete all required fields with valid values.");
+    if (form.sellerId === form.buyerId) return setError("Seller and buyer must be different dealers.");
     const transaction = {
       id: nextId("TRX", data.transactions),
       name: form.name,
       date: form.date,
       amount,
-      dealerId: dealer.id,
-      brokerageRate: Number(form.brokerageRate) || 0,
+      dealerId: form.sellerId,
+      sellerId: form.sellerId,
+      buyerId: form.buyerId,
+      brokerageRate,
+      brokerageEarned,
       paymentMethod: form.paymentMethod,
       notes: form.notes,
-      status: "Pending",
+      status: form.status,
     };
     addTransaction(transaction);
     onNavigate("/transaction-details?id=" + transaction.id);
@@ -1010,21 +1026,24 @@ function NewTransaction({ onNavigate }) {
           </div>
         </Panel>
         <Panel title="Parties involved" className="form-panel">
-          <div className="form-grid">
+          <div className="party-flow">
             <label>
               Seller
-              <select name="seller" value={form.seller} onChange={set} required>
-                <option value="">Select seller</option>
+              <select name="sellerId" value={form.sellerId} onChange={set} required>
+                <option value="">Select existing dealer</option>
                 {data.dealers.map((dealer) => (
-                  <option key={dealer.id}>{dealer.name}</option>
+                  <option key={dealer.id} value={dealer.id}>{dealer.name}</option>
                 ))}
               </select>
             </label>
+            <div className="party-connector" aria-hidden="true"><span>→</span><b>BROKERAGE</b><span>→</span></div>
             <label>
               Buyer
-              <select name="buyer" value={form.buyer} onChange={set} required>
-                <option value="">Select buyer</option>
-                <option>Diamond Broker</option>
+              <select name="buyerId" value={form.buyerId} onChange={set} required>
+                <option value="">Select existing dealer</option>
+                {data.dealers.map((dealer) => (
+                  <option key={dealer.id} value={dealer.id}>{dealer.name}</option>
+                ))}
               </select>
             </label>
           </div>
@@ -1032,26 +1051,39 @@ function NewTransaction({ onNavigate }) {
         <Panel title="Brokerage" className="form-panel">
           <div className="form-grid">
             <label>
-              Brokerage rate
+              Brokerage (%)
               <input
                 name="brokerageRate"
+                type="text"
+                inputMode="decimal"
+                pattern="[0-9.]*"
                 value={form.brokerageRate}
-                onChange={set}
-                placeholder="5.00%"
+                onChange={(event) => setForm((previous) => ({ ...previous, brokerageRate: event.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1") }))}
+                placeholder="1.00"
+                required
               />
             </label>
-            <label>
+            <div className="earned-field"><span>Brokerage earned</span><strong>{money(brokerageEarned)}</strong></div>
+            <label className="full">
               Payment method
-              <select
-                name="paymentMethod"
-                value={form.paymentMethod}
-                onChange={set}
-              >
-                <option>Bank transfer</option>
-                <option>Credit card</option>
-                <option>Cash</option>
+              <select name="paymentMethod" value={form.paymentMethod} onChange={set}>
+                <option>Bank transfer</option><option>Credit card</option><option>Cash</option>
               </select>
             </label>
+          </div>
+        </Panel>
+        <Panel title="Transaction status" className="form-panel">
+          <div className="form-grid">
+            <label>
+              Status
+              <select name="status" value={form.status} onChange={set} required>
+                <option>Pending</option><option>Processing</option><option>Completed</option>
+              </select>
+            </label>
+          </div>
+        </Panel>
+        <Panel title="Notes" className="form-panel">
+          <div className="form-grid">
             <label className="full">
               Notes
               <textarea
