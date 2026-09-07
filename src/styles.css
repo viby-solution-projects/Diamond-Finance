@@ -128,3 +128,40 @@ body,.app-shell,.main-area,.content{overflow-x:hidden}.table-scroll{overflow-x:v
 	.payment-card-list .mobile-card-meta>span{font-size:11px;color:var(--muted);overflow-wrap:anywhere}
 	.payment-card-list .mobile-card-item .status{font-size:10px}
 }
+
+@media(max-width:767px){
+	/* List pages use the section heading as the only outer boundary. */
+	.page-transactions>.panel,
+	.page-dealers .mobile-dealers>.panel,
+	.page-payments .mobile-payments>.panel,
+	.page-earnings .mobile-earnings> .panel:last-child,
+	.table-panel{
+		border:0;
+		border-radius:0;
+		background:transparent;
+		box-shadow:none;
+		overflow:visible;
+	}
+	.page-transactions>.panel>.panel-head,
+	.page-dealers .mobile-dealers>.panel>.panel-head,
+	.page-payments .mobile-payments>.panel>.panel-head,
+	.page-earnings .mobile-earnings> .panel:last-child>.panel-head,
+	.table-panel>.panel-head{
+		padding-inline:0;
+		margin-bottom:12px;
+		border-bottom:1px solid var(--line);
+	}
+	.page-transactions>.panel>.mobile-data-list,
+	.page-dealers .mobile-card-list,
+	.page-payments .mobile-card-list,
+	.page-earnings .mobile-earnings> .panel:last-child .mobile-card-list{
+		padding-inline:0;
+	}
+	.grouped-form{gap:12px}
+	.grouped-form .form-grid{gap:16px;padding:18px 16px}
+	.grouped-form .form-panel .panel-head{padding-inline:16px}
+	.grouped-form .form-panel label{display:block;min-width:0}
+	.grouped-form .form-panel input,
+	.grouped-form .form-panel select,
+	.grouped-form .form-panel textarea{min-width:0;min-height:42px}
+}
