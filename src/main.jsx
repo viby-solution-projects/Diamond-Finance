@@ -1109,7 +1109,6 @@ function NewTransaction({ onNavigate }) {
           <div className="form-grid">
             <label className="field-group">
               <span className="field-title">Transaction Name</span>
-              <span className="field-desc">Enter a name to identify this transaction.</span>
               <input
                 name="name"
                 value={form.name}
@@ -1121,7 +1120,6 @@ function NewTransaction({ onNavigate }) {
 
             <label className="field-group">
               <span className="field-title">Transaction Date</span>
-              <span className="field-desc">Date of transaction</span>
               <input
                 name="date"
                 type="date"
@@ -1133,7 +1131,6 @@ function NewTransaction({ onNavigate }) {
 
             <label className="field-group">
               <span className="field-title">Diamond Carat</span>
-              <span className="field-desc">Weight in carats (e.g. 10.50)</span>
               <input
                 name="diamondCarat"
                 type="text"
@@ -1159,7 +1156,6 @@ function NewTransaction({ onNavigate }) {
 
             <label className="field-group">
               <span className="field-title">Per Carat Rate</span>
-              <span className="field-desc">Price per carat in INR</span>
               <div className="input-with-symbol">
                 <span className="input-symbol">₹</span>
                 <input
@@ -1195,7 +1191,6 @@ function NewTransaction({ onNavigate }) {
 
             <label className="field-group">
               <span className="field-title">Terms (%)</span>
-              <span className="field-desc">Percentage terms (e.g. 2%)</span>
               <input
                 name="terms"
                 type="text"
@@ -1217,7 +1212,6 @@ function NewTransaction({ onNavigate }) {
 
             <label className="field-group">
               <span className="field-title">Due Days</span>
-              <span className="field-desc">Days until payment is due</span>
               <input
                 name="dueDays"
                 type="text"
@@ -1237,7 +1231,6 @@ function NewTransaction({ onNavigate }) {
 
             <div className="field-group">
               <span className="field-title">Sell Type</span>
-              <span className="field-desc">Select sales channel</span>
               <div className="segmented-control" role="radiogroup" aria-label="Sell Type">
                 <button
                   type="button"
@@ -1276,11 +1269,7 @@ function NewTransaction({ onNavigate }) {
             </div>
 
             <label className="field-group full">
-              <div className="label-with-badge">
-                <span className="field-title">Description</span>
-                <span className="optional-tag">Optional</span>
-              </div>
-              <span className="field-desc">Add a description for this transaction.</span>
+              <span className="field-title">Description</span>
               <textarea
                 name="notes"
                 value={form.notes}
@@ -1319,7 +1308,6 @@ function NewTransaction({ onNavigate }) {
           <div className="form-grid">
             <label className="field-group">
               <span className="field-title">Brokerage (%)</span>
-              <span className="field-desc">Broker fee percentage</span>
               <input
                 name="brokerageRate"
                 type="text"
