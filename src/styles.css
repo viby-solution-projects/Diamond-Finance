@@ -238,5 +238,6 @@ body,.app-shell,.main-area,.content{overflow-x:hidden}.table-scroll{overflow-x:v
 .mobile-card-actions{display:flex;align-items:center;gap:6px;margin-top:2px}
 .delete-confirm-text{font-size:13px;color:var(--ink);line-height:1.5;margin:0}
 .delete-warning-box{background:#fff4f2;border:1px solid #fbd2ce;border-radius:8px;padding:12px 14px;color:#b8323c;font-size:12px;line-height:1.4;font-weight:500}
+.dealer-role-tag{display:inline-flex;align-items:center;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600;background:#edf3ff;color:var(--blue);border:1px solid #d4e3fc}
 @keyframes modalPop{from{opacity:0;transform:scale(.96) translateY(6px)}to{opacity:1;transform:scale(1) translateY(0)}}
 

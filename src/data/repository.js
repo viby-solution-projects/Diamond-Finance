@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'diamond-finance-data-v3';
+const STORAGE_KEY = 'diamond-finance-data-v4';
 const SETTINGS_KEY = 'diamond-finance-settings-v1';
 
 export const seedData = {
@@ -47,14 +47,22 @@ export const seedData = {
     }
   ],
   dealers: [
-    { id: 'dealer-abc', name: 'ABC Diamonds', location: 'Mumbai, India', contact: 'Alex Brown', email: 'alex@abcdiamonds.com', phone: '+91 22 5550 0198', status: 'Active' },
-    { id: 'dealer-golden', name: 'Golden Carats', location: 'Delhi, India', contact: 'Maya Shah', email: 'maya@goldencarats.com', phone: '+91 11 5550 0186', status: 'Active' }
+    { id: 'dealer-abc', name: 'ABC Diamonds', location: 'Mumbai, India', contact: 'Alex Brown', email: 'alex@abcdiamonds.com', phone: '+91 22 5550 0198', status: 'Active', type: 'both' },
+    { id: 'dealer-golden', name: 'Golden Carats', location: 'Delhi, India', contact: 'Maya Shah', email: 'maya@goldencarats.com', phone: '+91 11 5550 0186', status: 'Active', type: 'both' }
   ],
   payments: [
     { id: 'PAY-8300', transactionId: 'TRX-20481', dealerId: 'dealer-abc', date: '2024-09-03', amount: 500000, method: 'Bank transfer', status: 'Completed' },
     { id: 'PAY-8301', transactionId: 'TRX-20480', dealerId: 'dealer-golden', date: '2024-09-02', amount: 1000000, method: 'Bank transfer', status: 'Pending' }
   ]
 };
+
+export function dealerTypeLabel(type) {
+  const t = String(type || 'both').toLowerCase();
+  if (t === 'buyer') return 'Buyer';
+  if (t === 'seller') return 'Seller';
+  return 'Buyer & Seller';
+}
+
 
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
 
@@ -71,6 +79,10 @@ export function localRepository() {
         if (!Array.isArray(data.transactions) || !Array.isArray(data.dealers) || !Array.isArray(data.payments)) {
           throw new Error('Invalid data');
         }
+        data.dealers = data.dealers.map(d => ({
+          ...d,
+          type: (d.type || 'both').toLowerCase(),
+        }));
         data.transactions = data.transactions.map(t => ({
           diamondCarat: t.diamondCarat ?? 0,
           perCaratRate: t.perCaratRate ?? 0,

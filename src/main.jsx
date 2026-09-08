@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import "./styles.css";
 import {
+  dealerTypeLabel,
   localRepository,
   loadSettings,
   money,
@@ -109,6 +110,7 @@ function App() {
       id,
       name: dealer.name.trim(),
       location: dealer.location.trim(),
+      type: (dealer.type || "both").toLowerCase(),
       phone: (dealer.phone || "").trim(),
       email: (dealer.email || "").trim(),
       contact: (dealer.contact || dealer.name).trim(),
@@ -130,6 +132,7 @@ function App() {
               ...updated,
               name: updated.name !== undefined ? updated.name.trim() : d.name,
               location: updated.location !== undefined ? updated.location.trim() : d.location,
+              type: (updated.type || d.type || "both").toLowerCase(),
               phone: updated.phone !== undefined ? updated.phone.trim() : d.phone,
               email: updated.email !== undefined ? updated.email.trim() : d.email,
               contact: updated.contact !== undefined ? updated.contact.trim() : (updated.name ? updated.name.trim() : d.contact),
@@ -1000,6 +1003,12 @@ function formatIndianNumber(value) {
 
 function NewTransaction({ onNavigate }) {
   const { data, addTransaction } = useData();
+  const sellerDealers = data.dealers.filter(
+    (d) => !d.type || d.type === "seller" || d.type === "both"
+  );
+  const buyerDealers = data.dealers.filter(
+    (d) => !d.type || d.type === "buyer" || d.type === "both"
+  );
   const [form, setForm] = useState({
     name: "",
     date: "2024-09-03",
@@ -1286,7 +1295,7 @@ function NewTransaction({ onNavigate }) {
               <span className="field-title">Seller</span>
               <select name="sellerId" value={form.sellerId} onChange={set} required>
                 <option value="">Select existing dealer</option>
-                {data.dealers.map((dealer) => (
+                {sellerDealers.map((dealer) => (
                   <option key={dealer.id} value={dealer.id}>{dealer.name}</option>
                 ))}
               </select>
@@ -1296,7 +1305,7 @@ function NewTransaction({ onNavigate }) {
               <span className="field-title">Buyer</span>
               <select name="buyerId" value={form.buyerId} onChange={set} required>
                 <option value="">Select existing dealer</option>
-                {data.dealers.map((dealer) => (
+                {buyerDealers.map((dealer) => (
                   <option key={dealer.id} value={dealer.id}>{dealer.name}</option>
                 ))}
               </select>
@@ -1438,7 +1447,10 @@ function DealerProfile({ onNavigate }) {
               {dealer.phone ? ` • ${dealer.phone}` : ""}
               {dealer.email ? ` • ${dealer.email}` : ""}
             </small>
-            <Status>{dealer.status}</Status>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "6px" }}>
+              <span className="dealer-role-tag">{dealerTypeLabel(dealer.type)}</span>
+              <Status>{dealer.status}</Status>
+            </div>
           </div>
         </div>
         <button
@@ -1496,6 +1508,7 @@ function DealerModal({ open, onClose, dealer, onSave }) {
   const [form, setForm] = useState({
     name: "",
     location: "",
+    type: "both",
     phone: "",
     email: "",
     status: "Active",
@@ -1507,6 +1520,7 @@ function DealerModal({ open, onClose, dealer, onSave }) {
       setForm({
         name: dealer.name || "",
         location: dealer.location || "",
+        type: dealer.type || "both",
         phone: dealer.phone || "",
         email: dealer.email || "",
         status: dealer.status || "Active",
@@ -1515,6 +1529,7 @@ function DealerModal({ open, onClose, dealer, onSave }) {
       setForm({
         name: "",
         location: "",
+        type: "both",
         phone: "",
         email: "",
         status: "Active",
@@ -1533,6 +1548,7 @@ function DealerModal({ open, onClose, dealer, onSave }) {
     onSave({
       name: form.name.trim(),
       location: form.location.trim(),
+      type: form.type || "both",
       phone: form.phone.trim(),
       email: form.email.trim(),
       status: form.status,
@@ -1572,6 +1588,38 @@ function DealerModal({ open, onClose, dealer, onSave }) {
                 required
               />
             </label>
+            <div className="field-group">
+              <span className="field-title">Dealer Type</span>
+              <div className="segmented-control" role="radiogroup" aria-label="Dealer Type">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={form.type === "buyer"}
+                  className={`segmented-btn ${form.type === "buyer" ? "active" : ""}`}
+                  onClick={() => setForm((p) => ({ ...p, type: "buyer" }))}
+                >
+                  Buyer
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={form.type === "seller"}
+                  className={`segmented-btn ${form.type === "seller" ? "active" : ""}`}
+                  onClick={() => setForm((p) => ({ ...p, type: "seller" }))}
+                >
+                  Seller
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={form.type === "both"}
+                  className={`segmented-btn ${form.type === "both" ? "active" : ""}`}
+                  onClick={() => setForm((p) => ({ ...p, type: "both" }))}
+                >
+                  Both
+                </button>
+              </div>
+            </div>
             <label className="field-group">
               <span className="field-title">Phone (Optional)</span>
               <input
@@ -1770,7 +1818,12 @@ function DesktopDealers({ onNavigate, onAdd, onEdit, onDelete }) {
                           <div className="dealer-avatar">
                             {dealer.name.slice(0, 2)}
                           </div>
-                          <b>{dealer.name}</b>
+                          <div>
+                            <b>{dealer.name}</b>
+                            <small style={{ display: "block", color: "var(--muted)", fontSize: "10px", marginTop: "2px" }}>
+                              {dealerTypeLabel(dealer.type)}
+                            </small>
+                          </div>
                         </div>
                       </td>
                       <td>{dealer.location}</td>
@@ -2274,7 +2327,7 @@ function MobileDealers({ onNavigate, onAdd, onEdit, onDelete }) {
       raw: dealer,
       id: dealer.id,
       title: dealer.name,
-      subtitle: dealer.location,
+      subtitle: `${dealer.location} • ${dealerTypeLabel(dealer.type)}`,
       meta: `${records.length} transactions`,
       amount: money(volume),
       status: dealer.status,
