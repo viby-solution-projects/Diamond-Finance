@@ -15,267 +15,182 @@ export const supabase = isSupabaseConfigured
       auth: {
         persistSession: true,
         autoRefreshToken: true,
+        detectSessionInUrl: true,
       }
     })
   : null;
 
-const AUTH_STORAGE_KEY = 'diamond-finance-auth-session';
-const PROFILES_LOCAL_KEY = 'diamond-finance-profiles-local';
-
-const initialLocalProfiles = [
-  {
-    id: 'admin-user-id',
-    email: 'admin@diamondfinance.com',
-    full_name: 'Super Admin',
-    role: 'super_admin',
-    status: 'active',
-    created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
-  },
-  {
-    id: 'demo-user-id',
-    email: 'jordan@diamond.com',
-    full_name: 'Jordan Davis',
-    role: 'staff',
-    status: 'active',
-    created_at: new Date(Date.now() - 14 * 86400000).toISOString(),
-  },
-  {
-    id: 'staff-2-id',
-    email: 'sarah.chen@diamond.com',
-    full_name: 'Sarah Chen',
-    role: 'staff',
-    status: 'active',
-    created_at: new Date(Date.now() - 7 * 86400000).toISOString(),
-  }
-];
-
-function getLocalProfiles() {
-  try {
-    const raw = localStorage.getItem(PROFILES_LOCAL_KEY);
-    if (!raw) {
-      localStorage.setItem(PROFILES_LOCAL_KEY, JSON.stringify(initialLocalProfiles));
-      return initialLocalProfiles;
-    }
-    return JSON.parse(raw);
-  } catch {
-    return initialLocalProfiles;
-  }
-}
-
-function saveLocalProfiles(profiles) {
-  try {
-    localStorage.setItem(PROFILES_LOCAL_KEY, JSON.stringify(profiles));
-  } catch {
-    // Ignore storage errors
-  }
-}
-
 /**
  * Authenticate with Supabase Auth and verify account status in profiles table.
+ * Strictly verifies against Supabase Auth.
  */
 export async function authSignIn(email, password) {
   const normalizedEmail = (email || '').trim().toLowerCase();
+  const cleanPassword = (password || '').trim();
 
-  if (isSupabaseConfigured && supabase) {
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: normalizedEmail,
-        password,
-      });
-
-      if (error || !data?.user) {
-        throw new Error('Invalid email or password.');
-      }
-
-      // Fetch profile to verify role and status
-      const { data: profile, error: profileErr } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', data.user.id)
-        .maybeSingle();
-
-      if (profileErr) {
-        console.warn('Profile fetch warning:', profileErr);
-      }
-
-      // If account is disabled, immediately revoke session
-      if (profile && profile.status === 'disabled') {
-        await supabase.auth.signOut();
-        throw new Error('Your account has been disabled. Please contact your administrator.');
-      }
-
-      const mergedProfile = profile || {
-        id: data.user.id,
-        email: data.user.email,
-        full_name: data.user.user_metadata?.full_name || 'Staff Member',
-        role: 'staff',
-        status: 'active',
-      };
-
-      return {
-        user: data.user,
-        session: data.session,
-        profile: mergedProfile,
-      };
-    } catch (err) {
-      if (err.message && err.message.includes('disabled')) {
-        throw err;
-      }
-      throw new Error('Invalid email or password.');
-    }
+  if (!normalizedEmail || !cleanPassword) {
+    throw new Error('Please enter your email and password.');
   }
 
-  // Fallback demo/offline authentication
-  const profiles = getLocalProfiles();
-  const matchingProfile = profiles.find((p) => p.email.toLowerCase() === normalizedEmail);
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error('Supabase authentication is not configured. Please check your environment configuration.');
+  }
 
-  if (matchingProfile && matchingProfile.status === 'disabled') {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: normalizedEmail,
+    password: cleanPassword,
+  });
+
+  if (error || !data?.user) {
+    throw new Error('Invalid email or password.');
+  }
+
+  // Fetch profile to verify role and status
+  let profile = null;
+  try {
+    const { data: profileData, error: profileErr } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', data.user.id)
+      .maybeSingle();
+
+    if (!profileErr && profileData) {
+      profile = profileData;
+    }
+  } catch (err) {
+    console.warn('Profile fetch warning:', err);
+  }
+
+  // If profile does not exist yet (e.g. before trigger), create fallback profile
+  if (!profile) {
+    profile = {
+      id: data.user.id,
+      email: data.user.email,
+      full_name: data.user.user_metadata?.full_name || 'Staff Member',
+      role: 'staff',
+      status: 'active',
+    };
+  }
+
+  // If account is disabled, immediately revoke session and reject
+  if (profile.status === 'disabled') {
+    await supabase.auth.signOut();
     throw new Error('Your account has been disabled. Please contact your administrator.');
   }
 
-  const role = matchingProfile?.role || (normalizedEmail.includes('admin') ? 'super_admin' : 'staff');
-  const fullName = matchingProfile?.full_name || (role === 'super_admin' ? 'Super Admin' : 'Jordan Davis');
-
-  const mockUser = {
-    id: matchingProfile?.id || (role === 'super_admin' ? 'admin-user-id' : 'demo-user-id'),
-    email: normalizedEmail,
-    user_metadata: { full_name: fullName },
+  return {
+    user: data.user,
+    session: data.session,
+    profile,
   };
-
-  const mockProfile = {
-    id: mockUser.id,
-    email: normalizedEmail,
-    full_name: fullName,
-    role,
-    status: 'active',
-  };
-
-  const mockSession = { user: mockUser, access_token: 'mock-token', profile: mockProfile };
-  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(mockSession));
-  return { user: mockUser, session: mockSession, profile: mockProfile };
 }
 
 /**
- * Sign out and clear cached auth state
+ * Sign out and clear active session
  */
 export async function authSignOut() {
   if (isSupabaseConfigured && supabase) {
     try {
       await supabase.auth.signOut();
     } catch (e) {
-      console.warn('Supabase sign out error:', e);
+      console.warn('Supabase signOut notice:', e);
     }
   }
-  localStorage.removeItem(AUTH_STORAGE_KEY);
 }
 
 /**
- * Restore active session and verify account status
+ * Restore active session and verify account status in profiles
  */
 export async function authGetSession() {
-  if (isSupabaseConfigured && supabase) {
-    try {
-      const { data, error } = await supabase.auth.getSession();
-      if (!error && data?.session?.user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', data.session.user.id)
-          .maybeSingle();
-
-        if (profile?.status === 'disabled') {
-          await supabase.auth.signOut();
-          return null;
-        }
-
-        const mergedProfile = profile || {
-          id: data.session.user.id,
-          email: data.session.user.email,
-          full_name: data.session.user.user_metadata?.full_name || 'Staff Member',
-          role: 'staff',
-          status: 'active',
-        };
-
-        return {
-          ...data.session,
-          profile: mergedProfile,
-        };
-      }
-    } catch (err) {
-      console.warn('Session verification failed:', err);
-      return null;
-    }
+  if (!isSupabaseConfigured || !supabase) {
+    return null;
   }
 
   try {
-    const stored = localStorage.getItem(AUTH_STORAGE_KEY);
-    if (!stored) return null;
-    const parsed = JSON.parse(stored);
-    
-    // Check if status in local profiles was disabled
-    if (parsed?.profile?.id) {
-      const profiles = getLocalProfiles();
-      const currentProfile = profiles.find((p) => p.id === parsed.profile.id);
-      if (currentProfile?.status === 'disabled') {
-        localStorage.removeItem(AUTH_STORAGE_KEY);
-        return null;
-      }
-      if (currentProfile) {
-        parsed.profile = currentProfile;
-      }
+    const { data, error } = await supabase.auth.getSession();
+    if (error || !data?.session?.user) {
+      return null;
     }
-    return parsed;
-  } catch {
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', data.session.user.id)
+      .maybeSingle();
+
+    if (profile?.status === 'disabled') {
+      await supabase.auth.signOut();
+      return null;
+    }
+
+    const mergedProfile = profile || {
+      id: data.session.user.id,
+      email: data.session.user.email,
+      full_name: data.session.user.user_metadata?.full_name || 'Staff Member',
+      role: 'staff',
+      status: 'active',
+    };
+
+    return {
+      ...data.session,
+      profile: mergedProfile,
+    };
+  } catch (err) {
+    console.warn('Session verification failed:', err);
     return null;
   }
 }
 
 /**
- * SUPER ADMIN: Fetch authorized users/profiles list
+ * SUPER ADMIN: Fetch authorized users/profiles list from Supabase
  */
 export async function fetchProfiles() {
-  if (isSupabaseConfigured && supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (!error && data) {
-        return data;
-      }
-    } catch (err) {
-      console.warn('fetchProfiles remote error:', err);
-    }
+  if (!isSupabaseConfigured || !supabase) {
+    return [];
   }
 
-  return getLocalProfiles();
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.warn('fetchProfiles error:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (err) {
+    console.warn('fetchProfiles failed:', err);
+    return [];
+  }
 }
 
 /**
  * SUPER ADMIN: Update profile details (Name, Status)
  */
 export async function updateProfile(userId, updates) {
-  if (isSupabaseConfigured && supabase) {
-    const { data, error } = await supabase
-      .from('profiles')
-      .update({
-        ...updates,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', userId)
-      .select()
-      .maybeSingle();
-
-    if (error) throw error;
-    if (data) return data;
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error('Supabase is not configured.');
   }
 
-  // Update local fallback store
-  const profiles = getLocalProfiles();
-  const updated = profiles.map((p) => (p.id === userId ? { ...p, ...updates } : p));
-  saveLocalProfiles(updated);
-  return updated.find((p) => p.id === userId);
+  // Prevent modifying role to super_admin through normal update
+  const sanitizedUpdates = { ...updates };
+  delete sanitizedUpdates.role;
+  sanitizedUpdates.updated_at = new Date().toISOString();
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .update(sanitizedUpdates)
+    .eq('id', userId)
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    throw new Error('Unable to update user profile. Please try again.');
+  }
+  return data;
 }
 
 /**
@@ -288,53 +203,81 @@ export async function toggleUserStatus(userId, currentStatus) {
 
 /**
  * SUPER ADMIN: Create authorized staff user
- * Note: Privileged Supabase Auth user creation securely calls server-side endpoint/Edge Function
- * without exposing the service_role key to the frontend.
+ * Invokes secure server-side Edge Function (or standard Supabase signUp if self-serve/direct)
+ * strictly without placing the service_role key into the client bundle.
  */
-export async function createAuthorizedUser({ fullName, email, temporaryPassword, role = 'staff' }) {
+export async function createAuthorizedUser({ fullName, email, temporaryPassword }) {
   const normalizedEmail = email.trim().toLowerCase();
-  const enforcedRole = 'staff'; // Enforce Staff only - no additional super admins allowed
+  const trimmedName = fullName.trim();
+  const enforcedRole = 'staff';
 
-  if (isSupabaseConfigured && supabase) {
-    try {
-      // Attempt call to secure backend edge function if configured
-      const { data, error } = await supabase.functions.invoke('create-user', {
-        body: {
-          email: normalizedEmail,
-          password: temporaryPassword,
-          full_name: fullName.trim(),
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error('Supabase is not configured.');
+  }
+
+  // 1. First attempt call to secure backend edge function if deployed
+  try {
+    const { data, error } = await supabase.functions.invoke('create-user', {
+      body: {
+        email: normalizedEmail,
+        password: temporaryPassword,
+        full_name: trimmedName,
+        role: enforcedRole,
+      },
+    });
+
+    if (!error && data?.user) {
+      return data;
+    }
+  } catch (err) {
+    console.warn('Edge function invoke notice (falling back to direct client provisioning):', err);
+  }
+
+  // 2. Direct Auth User Creation via Supabase client (creates user & triggers profile insert)
+  try {
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email: normalizedEmail,
+      password: temporaryPassword,
+      options: {
+        data: {
+          full_name: trimmedName,
           role: enforcedRole,
         },
+      },
+    });
+
+    if (signUpError) {
+      if (signUpError.message?.toLowerCase().includes('already registered')) {
+        throw new Error('A user with this email address already exists.');
+      }
+      throw new Error(signUpError.message || 'Unable to create user.');
+    }
+
+    if (signUpData?.user) {
+      // Ensure profile record is updated with proper full_name and active status
+      await supabase.from('profiles').upsert({
+        id: signUpData.user.id,
+        email: normalizedEmail,
+        full_name: trimmedName,
+        role: enforcedRole,
+        status: 'active',
       });
 
-      if (!error && data?.user) {
-        return data;
-      }
-    } catch (err) {
-      console.warn('Edge function not available, creating profile entry:', err);
+      return {
+        user: signUpData.user,
+        profile: {
+          id: signUpData.user.id,
+          email: normalizedEmail,
+          full_name: trimmedName,
+          role: enforcedRole,
+          status: 'active',
+          created_at: new Date().toISOString(),
+        }
+      };
     }
+  } catch (err) {
+    throw err;
   }
 
-  // Local / Database fallback profile record
-  const newProfile = {
-    id: `user-${Date.now()}`,
-    email: normalizedEmail,
-    full_name: fullName.trim(),
-    role: enforcedRole,
-    status: 'active',
-    created_at: new Date().toISOString(),
-  };
-
-  if (isSupabaseConfigured && supabase) {
-    try {
-      await supabase.from('profiles').upsert(newProfile);
-    } catch (e) {
-      console.warn('Direct profile upsert error:', e);
-    }
-  }
-
-  const profiles = getLocalProfiles();
-  profiles.unshift(newProfile);
-  saveLocalProfiles(profiles);
-  return { profile: newProfile };
+  throw new Error('Unable to create user. Please check your Supabase Auth configuration.');
 }

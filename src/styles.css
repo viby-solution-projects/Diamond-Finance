@@ -337,6 +337,31 @@ body,.app-shell,.main-area,.content{overflow-x:hidden}.table-scroll{overflow-x:v
   background: #ffffff;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
+.login-password-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.login-password-wrap input {
+  padding-right: 42px;
+}
+.password-toggle-btn {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  padding: 6px;
+  cursor: pointer;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: color 0.15s ease;
+}
+.password-toggle-btn:hover {
+  color: var(--ink);
+}
 .login-field input:focus {
   border-color: var(--blue);
   box-shadow: 0 0 0 3px rgba(35, 100, 232, 0.12);

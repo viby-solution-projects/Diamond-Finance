@@ -35,9 +35,12 @@ import {
   AlertCircle,
   KeyRound,
   CheckCircle2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import "./styles.css";
 import {
+  supabase,
   authSignIn,
   authSignOut,
   authGetSession,
@@ -126,6 +129,8 @@ function App() {
   }, []);
 
   useEffect(() => {
+    let authSubscription = null;
+
     authGetSession().then((session) => {
       if (session?.user) {
         setUser(session.user);
@@ -137,9 +142,32 @@ function App() {
       setAuthLoading(false);
     });
 
+    if (supabase) {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === "SIGNED_OUT" || !session?.user) {
+          setUser(null);
+          setProfile(null);
+          if (window.location.pathname !== "/login") {
+            navigate("/login");
+          }
+        } else if (session?.user) {
+          setUser(session.user);
+          const restored = await authGetSession();
+          if (restored?.profile) {
+            setProfile(restored.profile);
+          }
+        }
+      });
+      authSubscription = subscription;
+    }
+
     supabaseRepo.loadAll().then((remoteData) => {
       if (remoteData) setData(remoteData);
     });
+
+    return () => {
+      if (authSubscription) authSubscription.unsubscribe();
+    };
   }, []);
 
   const handleLogout = async () => {
@@ -491,6 +519,18 @@ function Sidebar({ current, onNavigate, open, onClose, userName = "Jordan Davis"
               </button>
             );
           })}
+          {role === "super_admin" && (
+            <>
+              <small className="nav-label" style={{ marginTop: "14px" }}>ADMINISTRATION</small>
+              <button
+                className={"nav-item " + (current === "Super Admin" ? "active" : "")}
+                onClick={() => onNavigate("/admin")}
+              >
+                <ShieldCheck size={18} />
+                <span>Super Admin</span>
+              </button>
+            </>
+          )}
         </nav>
         <div className="sidebar-bottom">
           <div className="user-row">
@@ -664,17 +704,19 @@ function MiniChart({ transactions, payments, period = "Monthly" }) {
 }
 
 function Dashboard({ onNavigate }) {
-  const { data } = useData();
-  const revenue = data.transactions.reduce((sum, item) => sum + item.amount, 0);
+  const { data, user, profile } = useData();
+  const userName = profile?.full_name || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User";
+  const firstName = userName.split(" ")[0];
+  const revenue = data.transactions.reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0);
   const pending = data.transactions
     .filter((item) => item.status === "Pending")
-    .reduce((sum, item) => sum + item.amount, 0);
+    .reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0);
   const active = data.dealers.filter((item) => item.status === "Active").length;
   return (
     <>
       <PageHeader
         eyebrow="Overview"
-        title="Good morning, Jordan"
+        title={`Good day, ${firstName}`}
         description="Here's what's happening with your business today."
         action={
           <Button onClick={() => onNavigate("/new-transaction")}>
@@ -1142,7 +1184,7 @@ function NewTransaction({ onNavigate }) {
   );
   const [form, setForm] = useState({
     name: "",
-    date: "2024-09-03",
+    date: new Date().toISOString().split("T")[0],
     diamondCarat: "",
     perCaratRate: "",
     terms: "2",
@@ -2656,7 +2698,43 @@ function Payments({ onNavigate }) {
   );
 }
 function MobilePayments({ onNavigate }) {
-  const { data } = useData();
+  const { data, addPayment } = useData();
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({
+    transactionId: data.transactions[0]?.id || "",
+    amount: "",
+    method: "Bank transfer",
+  });
+  const [error, setError] = useState("");
+
+  const set = (event) =>
+    setForm((previous) => ({
+      ...previous,
+      [event.target.name]: event.target.value,
+    }));
+
+  const submit = (event) => {
+    event.preventDefault();
+    const amount = Number(form.amount.replace(/[^0-9.]/g, ""));
+    if (!form.transactionId || !amount)
+      return setError("Select a transaction and enter a valid amount.");
+    const transaction = data.transactions.find(
+      (item) => item.id === form.transactionId,
+    );
+    addPayment({
+      id: nextId("PAY", data.payments),
+      transactionId: transaction.id,
+      dealerId: transaction.dealerId,
+      date: new Date().toISOString().slice(0, 10),
+      amount,
+      method: form.method,
+      status: "Completed",
+    });
+    setOpen(false);
+    setForm((previous) => ({ ...previous, amount: "" }));
+    setError("");
+  };
+
   const items = data.payments.map((payment) => {
     const dealer = data.dealers.find((item) => item.id === payment.dealerId);
     const transaction = data.transactions.find(
@@ -2681,7 +2759,87 @@ function MobilePayments({ onNavigate }) {
         eyebrow="Finance"
         title="Payments"
         description="Review incoming and outgoing payments."
+        action={
+          <button
+            type="button"
+            className="button"
+            onClick={() => setOpen(true)}
+          >
+            <Plus size={16} />
+            Add payment
+          </button>
+        }
       />
+      {open && (
+        <form className="payment-form panel" onSubmit={submit} style={{ marginBottom: "16px" }}>
+          <div className="panel-head">
+            <h2>Add payment</h2>
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={() => setOpen(false)}
+            >
+              <X size={17} />
+            </button>
+          </div>
+          <div className="form-grid">
+            <label>
+              Transaction
+              <select
+                name="transactionId"
+                value={form.transactionId}
+                onChange={set}
+              >
+                {data.transactions.map((item) => (
+                  <option key={item.id}>{item.id}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Amount
+              <input
+                name="amount"
+                value={form.amount}
+                onChange={(event) =>
+                  setForm((previous) => ({
+                    ...previous,
+                    amount: event.target.value
+                      .replace(/[^0-9.]/g, "")
+                      .replace(/(\..*)\./g, "$1"),
+                  }))
+                }
+                inputMode="decimal"
+                pattern="[0-9.]*"
+                placeholder={"\u20b9 0.00"}
+              />
+            </label>
+            <label>
+              Payment method
+              <select name="method" value={form.method} onChange={set}>
+                <option>Bank transfer</option>
+                <option>Cash</option>
+                <option>Credit card</option>
+              </select>
+            </label>
+          </div>
+          {error && (
+            <div className="form-error" role="alert">
+              {error}
+            </div>
+          )}
+          <div className="form-actions">
+            <Button
+              secondary
+              type="button"
+              onClick={() => setOpen(false)}
+              icon={null}
+            >
+              Cancel
+            </Button>
+            <Button type="submit">Add payment</Button>
+          </div>
+        </form>
+      )}
       <Panel title="Payment history">
         <div className="mobile-card-list">
           {items.map((item) => (
@@ -2797,6 +2955,8 @@ function MobileEarnings({ onNavigate }) {
 }
 function SettingsPage({ onNavigate }) {
   const [settings, setSettings] = useState(loadSettings);
+  const [savedNotice, setSavedNotice] = useState(false);
+
   const setField = (event) => {
     const { name, value, checked, type } = event.target;
     setSettings((previous) => ({
@@ -2804,6 +2964,13 @@ function SettingsPage({ onNavigate }) {
       [name]: type === "checkbox" ? checked : value,
     }));
   };
+
+  const handleSave = () => {
+    saveSettings(settings);
+    setSavedNotice(true);
+    setTimeout(() => setSavedNotice(false), 3500);
+  };
+
   return (
     <>
       <PageHeader
@@ -2813,8 +2980,15 @@ function SettingsPage({ onNavigate }) {
         eyebrow="Workspace"
         title="Settings"
         description="Manage your account, business details and operating preferences."
-        action={<Button onClick={() => saveSettings(settings)}>Save changes</Button>}
+        action={<Button onClick={handleSave}>Save changes</Button>}
       />
+
+      {savedNotice && (
+        <div className="notice" style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
+          <CheckCircle2 size={16} color="var(--green)" />
+          <span>Settings saved successfully.</span>
+        </div>
+      )}
 
       <div className="settings-page">
         <section className="settings-section">
@@ -2917,6 +3091,7 @@ function SettingsPage({ onNavigate }) {
 function LoginPage({ onLoginSuccess }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -2982,16 +3157,27 @@ function LoginPage({ onLoginSuccess }) {
 
           <div className="login-field">
             <label htmlFor="login-password">Password</label>
-            <input
-              id="login-password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              autoComplete="current-password"
-              required
-              disabled={loading}
-            />
+            <div className="login-password-wrap">
+              <input
+                id="login-password"
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                autoComplete="current-password"
+                required
+                disabled={loading}
+              />
+              <button
+                type="button"
+                className="password-toggle-btn"
+                onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
 
           <button
