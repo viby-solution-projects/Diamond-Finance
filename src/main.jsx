@@ -891,8 +891,8 @@ function TransactionDetails({ onNavigate }) {
           </div>
           <div className="detail-grid single">
             <Detail
-              label="Notes"
-              value={transaction.notes || "No notes added"}
+              label="Description"
+              value={transaction.notes || "No description added"}
             />
           </div>
         </Panel>
@@ -1076,14 +1076,18 @@ function NewTransaction({ onNavigate }) {
                 inputMode="decimal"
                 pattern="[0-9.]*"
                 value={form.diamondCarat}
-                onChange={(event) =>
+                onChange={(event) => {
+                  const raw = event.target.value.replace(/[^0-9.]/g, "");
+                  const parts = raw.split(".");
+                  let clean = parts[0];
+                  if (parts.length > 1) {
+                    clean = parts[0] + "." + parts.slice(1).join("").slice(0, 2);
+                  }
                   setForm((previous) => ({
                     ...previous,
-                    diamondCarat: event.target.value
-                      .replace(/[^0-9.]/g, "")
-                      .replace(/(\..*)\./g, "$1"),
-                  }))
-                }
+                    diamondCarat: clean,
+                  }));
+                }}
                 placeholder="e.g. 10.50"
                 required
               />
@@ -1209,15 +1213,15 @@ function NewTransaction({ onNavigate }) {
 
             <label className="field-group full">
               <div className="label-with-badge">
-                <span className="field-title">Notes</span>
+                <span className="field-title">Description</span>
                 <span className="optional-tag">Optional</span>
               </div>
-              <span className="field-desc">Add any notes about this transaction...</span>
+              <span className="field-desc">Add a description for this transaction.</span>
               <textarea
                 name="notes"
                 value={form.notes}
                 onChange={set}
-                placeholder="Add any notes about this transaction..."
+                placeholder="Enter a description..."
               />
             </label>
           </div>
