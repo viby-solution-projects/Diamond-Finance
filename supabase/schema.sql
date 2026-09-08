@@ -179,10 +179,17 @@ REVOKE ALL ON TABLE public.payments FROM anon;
 REVOKE ALL ON TABLE public.profiles FROM anon;
 
 -- ==============================================================================
--- DESIGNATE FIRST SUPER ADMIN (RUN IN SUPABASE SQL EDITOR)
+-- DESIGNATE EXISTING AUTH USER AS SUPER ADMIN
 -- ==============================================================================
--- To set your existing Supabase auth account as the one Super Admin, execute:
--- UPDATE public.profiles
--- SET role = 'super_admin', status = 'active'
--- WHERE email = 'your-superadmin-email@example.com';
--- ==============================================================================
+-- Automatically sync any existing user from auth.users into profiles as super_admin:
+INSERT INTO public.profiles (id, email, full_name, role, status)
+SELECT 
+  id, 
+  email, 
+  COALESCE(raw_user_meta_data->>'full_name', 'Super Admin'), 
+  'super_admin', 
+  'active'
+FROM auth.users
+ON CONFLICT (id) DO UPDATE
+SET role = 'super_admin', status = 'active';
+

@@ -1,7 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || '';
-const supabasePublishableKey = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY) || '';
+const supabasePublishableKey = (
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY) ||
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) ||
+  ''
+);
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl && 
@@ -10,6 +14,7 @@ export const isSupabaseConfigured = Boolean(
   !supabaseUrl.includes('your-supabase')
 );
 
+// Single, persistent Supabase client instance
 export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl, supabasePublishableKey, {
       auth: {
@@ -21,8 +26,32 @@ export const supabase = isSupabaseConfigured
   : null;
 
 /**
+ * Fetch profile record for a given user ID directly from public.profiles
+ */
+export async function fetchUserProfile(userId) {
+  if (!isSupabaseConfigured || !supabase || !userId) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, email, full_name, business_name, role, status, created_at, updated_at')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Supabase profile fetch error:', error);
+      return null;
+    }
+
+    return data;
+  } catch (err) {
+    console.error('Exception fetching user profile:', err);
+    return null;
+  }
+}
+
+/**
  * Authenticate with Supabase Auth and verify account status in profiles table.
- * Strictly verifies against Supabase Auth.
  */
 export async function authSignIn(email, password) {
   const normalizedEmail = (email || '').trim().toLowerCase();
@@ -45,29 +74,17 @@ export async function authSignIn(email, password) {
     throw new Error('Invalid email or password.');
   }
 
-  // Fetch profile to verify role and status
-  let profile = null;
-  try {
-    const { data: profileData, error: profileErr } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', data.user.id)
-      .maybeSingle();
+  // Fetch verified profile from database
+  let profile = await fetchUserProfile(data.user.id);
 
-    if (!profileErr && profileData) {
-      profile = profileData;
-    }
-  } catch (err) {
-    console.warn('Profile fetch warning:', err);
-  }
-
-  // If profile does not exist yet (e.g. before trigger), create fallback profile
+  // If profile query returned null, construct profile from authenticated user metadata without demoting super_admin
   if (!profile) {
+    const metaRole = data.user.user_metadata?.role;
     profile = {
       id: data.user.id,
       email: data.user.email,
-      full_name: data.user.user_metadata?.full_name || 'Staff Member',
-      role: 'staff',
+      full_name: data.user.user_metadata?.full_name || (metaRole === 'super_admin' ? 'Super Admin' : (data.user.email?.split('@')[0] || 'User')),
+      role: metaRole || 'staff',
       status: 'active',
     };
   }
@@ -107,36 +124,33 @@ export async function authGetSession() {
   }
 
   try {
-    const { data, error } = await supabase.auth.getSession();
-    if (error || !data?.session?.user) {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !sessionData?.session?.user) {
       return null;
     }
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', data.session.user.id)
-      .maybeSingle();
+    const user = sessionData.session.user;
+    const profile = await fetchUserProfile(user.id);
 
     if (profile?.status === 'disabled') {
       await supabase.auth.signOut();
       return null;
     }
 
-    const mergedProfile = profile || {
-      id: data.session.user.id,
-      email: data.session.user.email,
-      full_name: data.session.user.user_metadata?.full_name || 'Staff Member',
-      role: 'staff',
+    const resolvedProfile = profile || {
+      id: user.id,
+      email: user.email,
+      full_name: user.user_metadata?.full_name || (user.user_metadata?.role === 'super_admin' ? 'Super Admin' : (user.email ? user.email.split('@')[0] : 'User')),
+      role: user.user_metadata?.role || 'staff',
       status: 'active',
     };
 
     return {
-      ...data.session,
-      profile: mergedProfile,
+      ...sessionData.session,
+      profile: resolvedProfile,
     };
   } catch (err) {
-    console.warn('Session verification failed:', err);
+    console.error('Session verification failed:', err);
     return null;
   }
 }
@@ -156,13 +170,13 @@ export async function fetchProfiles() {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.warn('fetchProfiles error:', error);
+      console.error('fetchProfiles error:', error);
       return [];
     }
 
     return data || [];
   } catch (err) {
-    console.warn('fetchProfiles failed:', err);
+    console.error('fetchProfiles failed:', err);
     return [];
   }
 }
@@ -188,6 +202,7 @@ export async function updateProfile(userId, updates) {
     .maybeSingle();
 
   if (error) {
+    console.error('updateProfile error:', error);
     throw new Error('Unable to update user profile. Please try again.');
   }
   return data;
@@ -203,8 +218,6 @@ export async function toggleUserStatus(userId, currentStatus) {
 
 /**
  * SUPER ADMIN: Create authorized staff user
- * Invokes secure server-side Edge Function (or standard Supabase signUp if self-serve/direct)
- * strictly without placing the service_role key into the client bundle.
  */
 export async function createAuthorizedUser({ fullName, email, temporaryPassword }) {
   const normalizedEmail = email.trim().toLowerCase();
@@ -233,7 +246,7 @@ export async function createAuthorizedUser({ fullName, email, temporaryPassword 
     console.warn('Edge function invoke notice (falling back to direct client provisioning):', err);
   }
 
-  // 2. Direct Auth User Creation via Supabase client (creates user & triggers profile insert)
+  // 2. Direct Auth User Creation via Supabase client (triggers profile insert)
   try {
     const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
       email: normalizedEmail,
@@ -254,7 +267,6 @@ export async function createAuthorizedUser({ fullName, email, temporaryPassword 
     }
 
     if (signUpData?.user) {
-      // Ensure profile record is updated with proper full_name and active status
       await supabase.from('profiles').upsert({
         id: signUpData.user.id,
         email: normalizedEmail,

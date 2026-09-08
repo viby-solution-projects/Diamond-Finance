@@ -135,7 +135,7 @@ function App() {
     authGetSession().then((session) => {
       if (session?.user) {
         setUser(session.user);
-        setProfile(session.profile || { role: "staff", status: "active" });
+        setProfile(session.profile);
       } else {
         setUser(null);
         setProfile(null);
@@ -365,13 +365,17 @@ function App() {
     return null;
   }
 
-  const userName = profile?.full_name || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Jordan Davis";
-  const userInitials = userName
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  const isSuperAdmin = profile?.role === "super_admin";
+  const userName = profile?.full_name || (isSuperAdmin ? "Super Admin" : (user?.user_metadata?.full_name || (user?.email ? user.email.split("@")[0] : "User")));
+  const userEmail = profile?.email || user?.email || "";
+  const userInitials = isSuperAdmin
+    ? "SA"
+    : userName
+        .split(" ")
+        .map((w) => w[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase();
 
   return (
     <DataContext.Provider
@@ -396,7 +400,7 @@ function App() {
           open={drawer}
           onClose={() => setDrawer(false)}
           userName={userName}
-          userEmail={user?.email || "jordan@diamond.com"}
+          userEmail={userEmail}
           userInitials={userInitials}
           role={profile?.role || "staff"}
         />
@@ -613,8 +617,14 @@ function Sidebar({ current, onNavigate, open, onClose, userName = "Jordan Davis"
 }
 
 function Page({ current, onNavigate }) {
-  if (current === "Super Admin")
+  const { profile } = useData();
+  if (current === "Super Admin") {
+    if (profile?.role !== "super_admin") {
+      onNavigate("/");
+      return null;
+    }
     return <SuperAdminPage onNavigate={onNavigate} />;
+  }
   if (current === "Dashboard") return <Dashboard onNavigate={onNavigate} />;
   if (current === "Transactions")
     return <Transactions onNavigate={onNavigate} />;
@@ -768,8 +778,9 @@ function MiniChart({ transactions, payments, period = "Monthly" }) {
 
 function Dashboard({ onNavigate }) {
   const { data, user, profile } = useData();
-  const userName = profile?.full_name || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "User";
-  const firstName = userName.split(" ")[0];
+  const isSuperAdmin = profile?.role === "super_admin";
+  const userName = profile?.full_name || (isSuperAdmin ? "Super Admin" : (user?.user_metadata?.full_name || (user?.email ? user.email.split("@")[0] : "User")));
+  const greetingName = isSuperAdmin ? "Super Admin" : userName.split(" ")[0];
   const revenue = data.transactions.reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0);
   const pending = data.transactions
     .filter((item) => item.status === "Pending")
@@ -778,8 +789,8 @@ function Dashboard({ onNavigate }) {
   return (
     <>
       <PageHeader
-        eyebrow="Overview"
-        title={`Good day, ${firstName}`}
+        eyebrow={isSuperAdmin ? "SUPER ADMIN" : "Overview"}
+        title={`Good day, ${greetingName}`}
         description="Here's what's happening with your business today."
         action={
           <Button onClick={() => onNavigate("/new-transaction")}>
