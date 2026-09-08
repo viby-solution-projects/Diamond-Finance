@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import {
   BarChart3,
@@ -26,13 +26,25 @@ import {
   CalendarDays,
   Pencil,
   Trash2,
+  Shield,
+  ShieldCheck,
+  UserCheck,
+  UserX,
+  UserPlus,
+  Lock,
+  AlertCircle,
+  KeyRound,
+  CheckCircle2,
 } from "lucide-react";
 import "./styles.css";
 import {
   authSignIn,
-  authSignUp,
   authSignOut,
   authGetSession,
+  fetchProfiles,
+  updateProfile,
+  toggleUserStatus,
+  createAuthorizedUser,
 } from "./data/supabaseClient";
 import {
   dealerTypeLabel,
@@ -64,6 +76,8 @@ function useData() {
 
 function routeName() {
   const path = window.location.pathname;
+  if (path === "/admin") return "Super Admin";
+  if (path === "/login") return "Login";
   return path === "/"
     ? "Dashboard"
     : path
@@ -97,15 +111,28 @@ function App() {
   const [menu, setMenu] = useState(null);
   const [data, setData] = useState(() => localRepository().load());
   const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
 
   const repository = localRepository();
   const supabaseRepo = supabaseRepository();
 
-  React.useEffect(() => {
+  useEffect(() => {
+    const handleLocationChange = () => {
+      setCurrent(routeName());
+    };
+    window.addEventListener("popstate", handleLocationChange);
+    return () => window.removeEventListener("popstate", handleLocationChange);
+  }, []);
+
+  useEffect(() => {
     authGetSession().then((session) => {
       if (session?.user) {
         setUser(session.user);
+        setProfile(session.profile || { role: "staff", status: "active" });
+      } else {
+        setUser(null);
+        setProfile(null);
       }
       setAuthLoading(false);
     });
@@ -118,12 +145,14 @@ function App() {
   const handleLogout = async () => {
     await authSignOut();
     setUser(null);
+    setProfile(null);
     setMenu(null);
     navigate("/login");
   };
 
-  const handleLoginSuccess = (authenticatedUser) => {
+  const handleLoginSuccess = ({ user: authenticatedUser, profile: userProfile }) => {
     setUser(authenticatedUser);
+    setProfile(userProfile);
     navigate("/");
   };
 
@@ -210,17 +239,14 @@ function App() {
     return { success: true };
   };
   React.useEffect(() => {
-    const fn = () => setCurrent(routeName());
     const escape = (event) => {
       if (event.key === "Escape") {
         setDrawer(false);
         setMenu(null);
       }
     };
-    window.addEventListener("popstate", fn);
     window.addEventListener("keydown", escape);
     return () => {
-      window.removeEventListener("popstate", fn);
       window.removeEventListener("keydown", escape);
     };
   }, []);
@@ -250,10 +276,23 @@ function App() {
   }
 
   if (!user || current === "Login") {
+    if (window.location.pathname !== "/login") {
+      window.history.replaceState({}, "", "/login");
+    }
     return <LoginPage onLoginSuccess={handleLoginSuccess} />;
   }
 
-  const userName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Jordan Davis";
+  if (window.location.pathname === "/login") {
+    window.history.replaceState({}, "", "/");
+  }
+
+  // Super Admin route guard: Only super_admin role can access /admin
+  if (current === "Super Admin" && profile?.role !== "super_admin") {
+    navigate("/");
+    return null;
+  }
+
+  const userName = profile?.full_name || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Jordan Davis";
   const userInitials = userName
     .split(" ")
     .map((w) => w[0])
@@ -266,6 +305,7 @@ function App() {
       value={{
         data,
         user,
+        profile,
         addTransaction,
         addPayment,
         addDealer,
@@ -283,6 +323,7 @@ function App() {
           userName={userName}
           userEmail={user?.email || "jordan@diamond.com"}
           userInitials={userInitials}
+          role={profile?.role || "staff"}
         />
         <main className="main-area">
           <header className="topbar">
@@ -345,6 +386,7 @@ function App() {
                 className="avatar"
                 aria-label="Open profile"
                 onClick={() => setMenu(menu === "profile" ? null : "profile")}
+                style={profile?.role === "super_admin" ? { background: "#6d28d9" } : {}}
               >
                 {userInitials}
               </button>
@@ -358,6 +400,15 @@ function App() {
                 <div className="top-menu">
                   <b>{userName}</b>
                   <span style={{ fontSize: "11px", color: "var(--muted)" }}>{user?.email}</span>
+                  {profile?.role === "super_admin" && (
+                    <button
+                      className="super-admin-link"
+                      onClick={() => go("/admin")}
+                    >
+                      <Shield size={13} />
+                      <span>Super Admin</span>
+                    </button>
+                  )}
                   <button onClick={() => go("/settings")}>
                     Account settings
                   </button>
@@ -379,7 +430,7 @@ function App() {
   );
 }
 
-function Sidebar({ current, onNavigate, open, onClose, userName = "Jordan Davis", userEmail = "jordan@diamond.com", userInitials = "JD" }) {
+function Sidebar({ current, onNavigate, open, onClose, userName = "Jordan Davis", userEmail = "jordan@diamond.com", userInitials = "JD", role = "staff" }) {
   return (
     <>
       {open && <div className="scrim" onClick={onClose} />}
@@ -443,7 +494,9 @@ function Sidebar({ current, onNavigate, open, onClose, userName = "Jordan Davis"
         </nav>
         <div className="sidebar-bottom">
           <div className="user-row">
-            <div className="avatar">{userInitials}</div>
+            <div className="avatar" style={role === "super_admin" ? { background: "#6d28d9" } : {}}>
+              {userInitials}
+            </div>
             <div>
               <b>{userName}</b>
               <small>{userEmail}</small>
@@ -457,6 +510,8 @@ function Sidebar({ current, onNavigate, open, onClose, userName = "Jordan Davis"
 }
 
 function Page({ current, onNavigate }) {
+  if (current === "Super Admin")
+    return <SuperAdminPage onNavigate={onNavigate} />;
   if (current === "Dashboard") return <Dashboard onNavigate={onNavigate} />;
   if (current === "Transactions")
     return <Transactions onNavigate={onNavigate} />;
@@ -2860,43 +2915,30 @@ function SettingsPage({ onNavigate }) {
 }
 
 function LoginPage({ onLoginSuccess }) {
-  const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return;
     setError("");
-    if (!email.trim() || !password.trim()) {
-      return setError("Please enter your email and password.");
-    }
-    setLoading(true);
-    try {
-      if (isSignUp) {
-        const res = await authSignUp(email.trim(), password, fullName.trim() || "Jordan Davis");
-        onLoginSuccess(res?.user || { email: email.trim(), user_metadata: { full_name: fullName.trim() || "Jordan Davis" } });
-      } else {
-        const res = await authSignIn(email.trim(), password);
-        onLoginSuccess(res?.user || { email: email.trim(), user_metadata: { full_name: "Jordan Davis" } });
-      }
-    } catch (err) {
-      setError(err?.message || "Failed to authenticate. Please check your credentials.");
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const handleDemoLogin = async () => {
+    const cleanEmail = email.trim();
+    const cleanPassword = password.trim();
+
+    if (!cleanEmail || !cleanPassword) {
+      setError("Please enter your email and password.");
+      return;
+    }
+
     setLoading(true);
-    setError("");
     try {
-      const res = await authSignIn("jordan@diamond.com", "diamond123456");
-      onLoginSuccess(res?.user || { email: "jordan@diamond.com", user_metadata: { full_name: "Jordan Davis" } });
-    } catch {
-      onLoginSuccess({ email: "jordan@diamond.com", user_metadata: { full_name: "Jordan Davis" } });
+      const res = await authSignIn(cleanEmail, cleanPassword);
+      onLoginSuccess({ user: res.user, profile: res.profile });
+    } catch (err) {
+      setError(err?.message || "Invalid email or password.");
     } finally {
       setLoading(false);
     }
@@ -2908,79 +2950,564 @@ function LoginPage({ onLoginSuccess }) {
         <div className="login-head">
           <div className="login-brand">
             <div className="brand-mark">
-              <Gem size={18} />
+              <Gem size={20} />
             </div>
             <span>Diamond Finance</span>
           </div>
-          <h1>{isSignUp ? "Create your workspace" : "Welcome back"}</h1>
-          <p>{isSignUp ? "Sign up to manage diamond transactions and dealers." : "Sign in to access your diamond finance workspace."}</p>
+          <h1>Sign in to Diamond Finance</h1>
+          <p>Enter your authorized credentials to access your finance workspace.</p>
         </div>
 
-        {error && <div className="form-error">{error}</div>}
+        {error && (
+          <div className="login-error-banner" role="alert">
+            <AlertCircle size={16} style={{ flexShrink: 0 }} />
+            <span>{error}</span>
+          </div>
+        )}
 
-        <form className="login-form" onSubmit={handleSubmit}>
-          {isSignUp && (
-            <label className="field-group">
-              <span className="field-title">Full Name</span>
-              <input
-                type="text"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                placeholder="e.g. Jordan Davis"
-                required
-              />
-            </label>
-          )}
-
-          <label className="field-group">
-            <span className="field-title">Email address</span>
+        <form className="login-form" onSubmit={handleSubmit} noValidate>
+          <div className="login-field">
+            <label htmlFor="login-email">Email address</label>
             <input
+              id="login-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="e.g. jordan@diamond.com"
+              placeholder="e.g. user@diamondfinance.com"
+              autoComplete="email"
               required
+              disabled={loading}
             />
-          </label>
+          </div>
 
-          <label className="field-group">
-            <span className="field-title">Password</span>
+          <div className="login-field">
+            <label htmlFor="login-password">Password</label>
             <input
+              id="login-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
+              autoComplete="current-password"
               required
+              disabled={loading}
             />
-          </label>
+          </div>
 
-          <Button type="submit" disabled={loading}>
-            {loading ? "Processing..." : isSignUp ? "Create Account" : "Sign in"}
-          </Button>
-        </form>
-
-        <button type="button" className="demo-btn" onClick={handleDemoLogin} disabled={loading}>
-          ✨ Quick Sign In with Demo Account
-        </button>
-
-        <div className="login-footer">
           <button
-            type="button"
-            className="login-toggle"
-            onClick={() => {
-              setIsSignUp(!isSignUp);
-              setError("");
-            }}
+            type="submit"
+            className="login-submit-btn"
+            disabled={loading}
+            aria-busy={loading}
           >
-            {isSignUp ? (
-              <span>Already have an account? <b>Sign in</b></span>
+            {loading ? (
+              <span>Signing in...</span>
             ) : (
-              <span>Don't have an account? <b>Sign up</b></span>
+              <span>Sign In</span>
             )}
           </button>
+        </form>
+
+        <div className="login-security-note">
+          <Lock size={12} />
+          <span>Authorized access only • Protected by Supabase Row Level Security</span>
         </div>
       </div>
     </div>
+  );
+}
+
+function SuperAdminPage({ onNavigate }) {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [modal, setModal] = useState(null); // 'add' | 'edit' | 'confirm_disable'
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [formData, setFormData] = useState({ fullName: "", email: "", temporaryPassword: "", status: "active" });
+  const [actionLoading, setActionLoading] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [bannerNotice, setBannerNotice] = useState("");
+
+  const loadUsers = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchProfiles();
+      setUsers(data || []);
+    } catch (e) {
+      console.warn("Failed to load users:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  const handleOpenAdd = () => {
+    setFormData({ fullName: "", email: "", temporaryPassword: "", status: "active" });
+    setFormError("");
+    setModal("add");
+  };
+
+  const handleOpenEdit = (user) => {
+    setSelectedUser(user);
+    setFormData({ fullName: user.full_name || "", email: user.email || "", temporaryPassword: "", status: user.status || "active" });
+    setFormError("");
+    setModal("edit");
+  };
+
+  const handleOpenDisable = (user) => {
+    setSelectedUser(user);
+    setModal("confirm_disable");
+  };
+
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
+    if (actionLoading) return;
+    setFormError("");
+
+    if (!formData.fullName.trim() || !formData.email.trim() || !formData.temporaryPassword.trim()) {
+      setFormError("All fields are required.");
+      return;
+    }
+
+    if (formData.temporaryPassword.length < 6) {
+      setFormError("Temporary password must be at least 6 characters.");
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      await createAuthorizedUser({
+        fullName: formData.fullName.trim(),
+        email: formData.email.trim(),
+        temporaryPassword: formData.temporaryPassword,
+        role: "staff",
+      });
+      setModal(null);
+      setBannerNotice(`User "${formData.fullName.trim()}" created successfully as Staff.`);
+      setTimeout(() => setBannerNotice(""), 4000);
+      await loadUsers();
+    } catch (err) {
+      setFormError(err?.message || "Failed to create user.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleUpdateUser = async (e) => {
+    e.preventDefault();
+    if (actionLoading || !selectedUser) return;
+    setFormError("");
+
+    if (!formData.fullName.trim()) {
+      setFormError("Name cannot be empty.");
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      await updateProfile(selectedUser.id, {
+        full_name: formData.fullName.trim(),
+        status: formData.status,
+      });
+      setModal(null);
+      setBannerNotice("User updated successfully.");
+      setTimeout(() => setBannerNotice(""), 4000);
+      await loadUsers();
+    } catch (err) {
+      setFormError(err?.message || "Failed to update user.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleToggleStatus = async (user) => {
+    if (user.role === "super_admin") return;
+    setActionLoading(true);
+    try {
+      await toggleUserStatus(user.id, user.status);
+      setModal(null);
+      setBannerNotice(`Account status updated for ${user.email}.`);
+      setTimeout(() => setBannerNotice(""), 4000);
+      await loadUsers();
+    } catch (err) {
+      console.warn("Failed to toggle status:", err);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const filteredUsers = users.filter((u) => {
+    const q = search.toLowerCase();
+    return (
+      (u.full_name || "").toLowerCase().includes(q) ||
+      (u.email || "").toLowerCase().includes(q) ||
+      (u.role || "").toLowerCase().includes(q)
+    );
+  });
+
+  const totalUsers = users.length;
+  const activeStaff = users.filter((u) => u.role === "staff" && u.status === "active").length;
+  const disabledCount = users.filter((u) => u.status === "disabled").length;
+  const superAdminCount = users.filter((u) => u.role === "super_admin").length;
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="ADMINISTRATION"
+        title="Super Admin"
+        description="Manage authorized Diamond Finance users and access permissions."
+        action={
+          <button className="button" onClick={handleOpenAdd}>
+            <UserPlus size={16} />
+            <span>Add User</span>
+          </button>
+        }
+      />
+
+      {bannerNotice && (
+        <div className="notice" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <CheckCircle2 size={16} color="var(--green)" />
+          <span>{bannerNotice}</span>
+        </div>
+      )}
+
+      <div className="stats-grid">
+        <div className="stat">
+          <div className="stat-top">
+            <span>Total Accounts</span>
+            <div className="stat-icon"><Users size={16} /></div>
+          </div>
+          <strong>{totalUsers}</strong>
+          <small>Authorized users</small>
+        </div>
+        <div className="stat">
+          <div className="stat-top">
+            <span>Active Staff</span>
+            <div className="stat-icon" style={{ background: "var(--green-soft)", color: "var(--green)" }}><UserCheck size={16} /></div>
+          </div>
+          <strong>{activeStaff}</strong>
+          <small className="up">Operational access</small>
+        </div>
+        <div className="stat">
+          <div className="stat-top">
+            <span>Disabled</span>
+            <div className="stat-icon" style={{ background: "#fee2e2", color: "#dc2626" }}><UserX size={16} /></div>
+          </div>
+          <strong>{disabledCount}</strong>
+          <small className="down">Blocked access</small>
+        </div>
+        <div className="stat">
+          <div className="stat-top">
+            <span>Super Admin</span>
+            <div className="stat-icon" style={{ background: "#f5f3ff", color: "#7c3aed" }}><ShieldCheck size={16} /></div>
+          </div>
+          <strong>{superAdminCount}</strong>
+          <small>Designated account</small>
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel-head">
+          <h2>Authorized Users ({filteredUsers.length})</h2>
+          <div className="panel-actions">
+            <div className="search">
+              <Search size={14} />
+              <input
+                type="text"
+                placeholder="Search by name or email..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Added Date</th>
+                <th style={{ textAlign: "right" }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredUsers.length === 0 ? (
+                <tr>
+                  <td colSpan={5}>
+                    <div className="empty-state">
+                      <b>No users found</b>
+                      <span>Try adjusting your search criteria.</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filteredUsers.map((u) => {
+                  const isSuper = u.role === "super_admin";
+                  const isDisabled = u.status === "disabled";
+                  const formattedDate = u.created_at
+                    ? new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                    : "—";
+
+                  return (
+                    <tr key={u.id}>
+                      <td>
+                        <div className="table-person">
+                          <div className="avatar" style={isSuper ? { background: "#6d28d9" } : {}}>
+                            {(u.full_name || u.email || "U").slice(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <b>{u.full_name || "Staff Member"}</b>
+                            <span className="table-id">{u.email}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <span className={`admin-badge ${isSuper ? "super-admin" : "staff"}`}>
+                          {isSuper ? "Super Admin" : "Staff"}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`status-pill ${isDisabled ? "disabled" : "active"}`}>
+                          <i />
+                          {isDisabled ? "Disabled" : "Active"}
+                        </span>
+                      </td>
+                      <td>
+                        <span>{formattedDate}</span>
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        {isSuper ? (
+                          <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: 600, fontStyle: "italic" }}>
+                            Primary Admin (Protected)
+                          </span>
+                        ) : (
+                          <div className="admin-actions-cell" style={{ justifyContent: "flex-end" }}>
+                            <button
+                              type="button"
+                              className="admin-action-btn"
+                              onClick={() => handleOpenEdit(u)}
+                            >
+                              <Pencil size={12} />
+                              <span>Edit</span>
+                            </button>
+                            {isDisabled ? (
+                              <button
+                                type="button"
+                                className="admin-action-btn success"
+                                onClick={() => handleToggleStatus(u)}
+                                disabled={actionLoading}
+                              >
+                                <UserCheck size={12} />
+                                <span>Enable</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="admin-action-btn danger"
+                                onClick={() => handleOpenDisable(u)}
+                                disabled={actionLoading}
+                              >
+                                <UserX size={12} />
+                                <span>Disable</span>
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Add User Modal */}
+      {modal === "add" && (
+        <div className="modal-backdrop" onClick={() => setModal(null)}>
+          <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="admin-modal-head">
+              <h3>Add Authorized User</h3>
+              <button className="icon-btn" onClick={() => setModal(null)}>
+                <X size={18} />
+              </button>
+            </div>
+            <form onSubmit={handleCreateUser}>
+              <div className="admin-modal-body">
+                {formError && (
+                  <div className="login-error-banner">
+                    <AlertCircle size={15} />
+                    <span>{formError}</span>
+                  </div>
+                )}
+                <label>
+                  <span>Full Name</span>
+                  <input
+                    type="text"
+                    placeholder="e.g. Alex Morgan"
+                    value={formData.fullName}
+                    onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                    required
+                  />
+                </label>
+                <label>
+                  <span>Email Address</span>
+                  <input
+                    type="email"
+                    placeholder="e.g. alex@diamondfinance.com"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    required
+                  />
+                </label>
+                <label>
+                  <span>Temporary Password</span>
+                  <input
+                    type="password"
+                    placeholder="Minimum 6 characters"
+                    value={formData.temporaryPassword}
+                    onChange={(e) => setFormData({ ...formData, temporaryPassword: e.target.value })}
+                    required
+                  />
+                  <small>The user can sign in with this temporary password.</small>
+                </label>
+                <label>
+                  <span>Role</span>
+                  <select disabled value="staff">
+                    <option value="staff">Staff (Standard Workspace Access)</option>
+                  </select>
+                  <small>Only one Super Admin account exists for the workspace.</small>
+                </label>
+              </div>
+              <div className="admin-modal-actions">
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={() => setModal(null)}
+                  disabled={actionLoading}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="button" disabled={actionLoading}>
+                  {actionLoading ? "Creating User..." : "Create User"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit User Modal */}
+      {modal === "edit" && selectedUser && (
+        <div className="modal-backdrop" onClick={() => setModal(null)}>
+          <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="admin-modal-head">
+              <h3>Edit User — {selectedUser.email}</h3>
+              <button className="icon-btn" onClick={() => setModal(null)}>
+                <X size={18} />
+              </button>
+            </div>
+            <form onSubmit={handleUpdateUser}>
+              <div className="admin-modal-body">
+                {formError && (
+                  <div className="login-error-banner">
+                    <AlertCircle size={15} />
+                    <span>{formError}</span>
+                  </div>
+                )}
+                <label>
+                  <span>Full Name</span>
+                  <input
+                    type="text"
+                    value={formData.fullName}
+                    onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                    required
+                  />
+                </label>
+                <label>
+                  <span>Email (Account ID)</span>
+                  <input type="email" value={selectedUser.email} disabled />
+                  <small>Email address is managed in Supabase Auth.</small>
+                </label>
+                <label>
+                  <span>Account Status</span>
+                  <select
+                    value={formData.status}
+                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  >
+                    <option value="active">Active (Can log in)</option>
+                    <option value="disabled">Disabled (Login blocked)</option>
+                  </select>
+                </label>
+              </div>
+              <div className="admin-modal-actions">
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={() => setModal(null)}
+                  disabled={actionLoading}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="button" disabled={actionLoading}>
+                  {actionLoading ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Disable Confirmation Modal */}
+      {modal === "confirm_disable" && selectedUser && (
+        <div className="modal-backdrop" onClick={() => setModal(null)}>
+          <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="admin-modal-head">
+              <h3>Disable Staff Account</h3>
+              <button className="icon-btn" onClick={() => setModal(null)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className="admin-modal-body">
+              <div className="delete-warning-box">
+                Are you sure you want to disable <strong>{selectedUser.full_name || selectedUser.email}</strong>?
+                <br />
+                <span style={{ fontSize: "11.5px", marginTop: "6px", display: "inline-block" }}>
+                  This user will be immediately blocked from signing in and accessing Diamond Finance.
+                  Their historical transactions, payments, and dealer records will remain intact.
+                </span>
+              </div>
+            </div>
+            <div className="admin-modal-actions">
+              <button
+                type="button"
+                className="button secondary"
+                onClick={() => setModal(null)}
+                disabled={actionLoading}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="button"
+                style={{ background: "#dc2626" }}
+                onClick={() => handleToggleStatus(selectedUser)}
+                disabled={actionLoading}
+              >
+                {actionLoading ? "Disabling..." : "Confirm Disable"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

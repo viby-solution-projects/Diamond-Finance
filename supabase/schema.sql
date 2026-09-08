@@ -8,16 +8,37 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     email TEXT UNIQUE NOT NULL,
     full_name TEXT,
     business_name TEXT DEFAULT 'Diamond Broker',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+    role TEXT NOT NULL DEFAULT 'staff' CHECK (role IN ('staff', 'super_admin')),
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Trigger to create a profile automatically when a user signs up via Supabase Auth
+-- Helper function to check if the current authenticated user is active Super Admin
+CREATE OR REPLACE FUNCTION public.is_super_admin()
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid() AND role = 'super_admin' AND status = 'active'
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger to create a profile automatically when a user signs up/is created via Supabase Auth
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.profiles (id, email, full_name)
-  VALUES (new.id, new.email, COALESCE(new.raw_user_meta_data->>'full_name', 'Jordan Davis'))
-  ON CONFLICT (id) DO NOTHING;
+  INSERT INTO public.profiles (id, email, full_name, role, status)
+  VALUES (
+    new.id,
+    new.email,
+    COALESCE(new.raw_user_meta_data->>'full_name', 'Staff Member'),
+    'staff',
+    'active'
+  )
+  ON CONFLICT (id) DO UPDATE
+  SET email = EXCLUDED.email;
   RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -86,13 +107,19 @@ ALTER TABLE public.dealers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
 
--- Strict Authenticated Access Policies (Unauthenticated access is prevented)
+-- Profiles: Authenticated users can read their own profile; Super Admin can read all profiles.
+DROP POLICY IF EXISTS "Allow authenticated read profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Allow authenticated update profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Allow read profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Allow update profiles" ON public.profiles;
 
--- Profiles
-CREATE POLICY "Allow authenticated read profiles" ON public.profiles
-    FOR SELECT TO authenticated USING (auth.uid() = id);
-CREATE POLICY "Allow authenticated update profiles" ON public.profiles
-    FOR UPDATE TO authenticated USING (auth.uid() = id);
+CREATE POLICY "Allow read profiles" ON public.profiles
+    FOR SELECT TO authenticated 
+    USING (auth.uid() = id OR public.is_super_admin());
+
+CREATE POLICY "Allow update profiles" ON public.profiles
+    FOR UPDATE TO authenticated 
+    USING (auth.uid() = id OR public.is_super_admin());
 
 -- Dealers
 CREATE POLICY "Allow authenticated read dealers" ON public.dealers
@@ -132,24 +159,14 @@ CREATE INDEX IF NOT EXISTS idx_payments_date ON public.payments(date);
 CREATE INDEX IF NOT EXISTS idx_transactions_dealer ON public.transactions(dealer_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_seller ON public.transactions(seller_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_buyer ON public.transactions(buyer_id);
+CREATE INDEX IF NOT EXISTS idx_profiles_role ON public.profiles(role);
+CREATE INDEX IF NOT EXISTS idx_profiles_status ON public.profiles(status);
 
 -- ==============================================================================
--- OPTIONAL INITIAL SEED DATA
+-- DESIGNATE FIRST SUPER ADMIN (RUN IN SUPABASE SQL EDITOR)
 -- ==============================================================================
-INSERT INTO public.dealers (id, name, location, type, contact, email, phone, status)
-VALUES 
-    ('dealer-abc', 'ABC Diamonds', 'Mumbai, India', 'both', 'Alex Brown', 'alex@abcdiamonds.com', '+91 22 5550 0198', 'Active'),
-    ('dealer-golden', 'Golden Carats', 'Delhi, India', 'both', 'Maya Shah', 'maya@goldencarats.com', '+91 11 5550 0186', 'Active')
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO public.transactions (id, name, dealer_id, seller_id, buyer_id, date, diamond_carat, per_carat_rate, total_rate, amount, terms, due_days, sell_type, other_sell_type, brokerage_rate, brokerage_earned, status, payment_method, notes)
-VALUES 
-    ('TRX-20481', 'Mumbai Lot #102', 'dealer-abc', 'dealer-abc', 'dealer-golden', '2024-09-03', 10, 50000, 500000, 500000, 2, 30, 'Self', '', 5, 25000, 'Completed', 'Bank transfer', 'Round brilliant diamond lot.'),
-    ('TRX-20480', 'Delhi Lot #88', 'dealer-golden', 'dealer-golden', 'dealer-abc', '2024-09-02', 12.5, 80000, 1000000, 1000000, 2.5, 45, 'Other', 'Wholesale', 5, 50000, 'Pending', 'Bank transfer', 'Fancy cut diamond parcel.')
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO public.payments (id, transaction_id, dealer_id, date, amount, method, status)
-VALUES 
-    ('PAY-8300', 'TRX-20481', 'dealer-abc', '2024-09-03', 500000, 'Bank transfer', 'Completed'),
-    ('PAY-8301', 'TRX-20480', 'dealer-golden', '2024-09-02', 1000000, 'Bank transfer', 'Pending')
-ON CONFLICT (id) DO NOTHING;
+-- To set your existing Supabase auth account as the one Super Admin, execute:
+-- UPDATE public.profiles
+-- SET role = 'super_admin', status = 'active'
+-- WHERE email = 'your-superadmin-email@example.com';
+-- ==============================================================================
