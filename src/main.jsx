@@ -826,22 +826,50 @@ function TransactionDetails({ onNavigate }) {
         <Panel title="Financial summary" className="detail-summary">
           <div className="detail-amount">
             <span>Total amount</span>
-            <strong>{money(transaction.amount)}</strong>
+            <strong>{money(transaction.totalRate || transaction.amount)}</strong>
             <Status>{transaction.status}</Status>
           </div>
           <div className="detail-grid">
             <Detail label="Transaction ID" value={transaction.id} />
             <Detail label="Transaction date" value={transaction.date} />
-            <Detail label="Payment method" value={transaction.paymentMethod} />
+            {transaction.diamondCarat ? (
+              <Detail label="Diamond Carat" value={`${transaction.diamondCarat} ct`} />
+            ) : null}
+            {transaction.perCaratRate ? (
+              <Detail label="Per Carat Rate" value={money(transaction.perCaratRate)} />
+            ) : null}
+            {transaction.totalRate ? (
+              <Detail label="Total Rate" value={money(transaction.totalRate)} />
+            ) : null}
+            {transaction.terms != null && transaction.terms !== "" ? (
+              <Detail label="Terms" value={`${transaction.terms}%`} />
+            ) : null}
+            {transaction.dueDays != null && transaction.dueDays !== "" ? (
+              <Detail label="Due Days" value={`${transaction.dueDays} days`} />
+            ) : null}
+            {transaction.sellType ? (
+              <Detail
+                label="Sell Type"
+                value={
+                  transaction.sellType === "Other" && transaction.otherSellType
+                    ? `Other (${transaction.otherSellType})`
+                    : transaction.sellType
+                }
+              />
+            ) : null}
+            <Detail label="Payment method" value={transaction.paymentMethod || "Bank transfer"} />
             <Detail label="Seller" value={dealer?.name || "Not selected"} />
             <Detail label="Buyer" value={buyer?.name || "Not selected"} />
             <Detail
               label="Brokerage rate"
-              value={`${transaction.brokerageRate}%`}
+              value={`${transaction.brokerageRate ?? 5}%`}
             />
             <Detail
               label="Brokerage earned"
-              value={money(transaction.brokerageEarned ?? ((transaction.amount * transaction.brokerageRate) / 100))}
+              value={money(
+                transaction.brokerageEarned ??
+                  (((transaction.totalRate || transaction.amount || 0) * (transaction.brokerageRate || 0)) / 100)
+              )}
             />
           </div>
         </Panel>
@@ -879,7 +907,7 @@ function TransactionDetails({ onNavigate }) {
                 {transaction.date} - {transaction.paymentMethod}
               </small>
             </div>
-            <strong>{money(transaction.amount)}</strong>
+            <strong>{money(transaction.totalRate || transaction.amount)}</strong>
           </div>
         </Panel>
       </div>
@@ -894,12 +922,29 @@ function Detail({ label, value }) {
     </div>
   );
 }
+
+function formatIndianNumber(value) {
+  if (value === "" || value == null) return "";
+  const clean = String(value).replace(/[^0-9.]/g, "");
+  const parts = clean.split(".");
+  const intPart = parts[0];
+  const decPart = parts.length > 1 ? "." + parts.slice(1).join("") : "";
+  if (!intPart) return decPart ? "0" + decPart : "";
+  const formattedInt = Number(intPart).toLocaleString("en-IN");
+  return formattedInt + decPart;
+}
+
 function NewTransaction({ onNavigate }) {
   const { data, addTransaction } = useData();
   const [form, setForm] = useState({
     name: "",
     date: "2024-09-03",
-    amount: "",
+    diamondCarat: "",
+    perCaratRate: "",
+    terms: "2",
+    dueDays: "30",
+    sellType: "Self",
+    otherSellType: "",
     sellerId: "",
     buyerId: "",
     brokerageRate: "5",
@@ -908,47 +953,83 @@ function NewTransaction({ onNavigate }) {
     notes: "",
   });
   const [error, setError] = useState("");
-  const amountValue = Number(form.amount) || 0;
+
+  const caratValue = parseFloat(form.diamondCarat) || 0;
+  const perCaratRateValue = parseFloat(String(form.perCaratRate).replace(/,/g, "")) || 0;
+  const totalRateValue =
+    caratValue > 0 && perCaratRateValue > 0
+      ? Math.round(caratValue * perCaratRateValue * 100) / 100
+      : 0;
+
   const brokerageRateValue = Number(form.brokerageRate) || 0;
-  const brokerageEarned = amountValue * brokerageRateValue / 100;
+  const brokerageEarned = (totalRateValue * brokerageRateValue) / 100;
+
   const set = (event) =>
     setForm((previous) => ({
       ...previous,
       [event.target.name]: event.target.value,
     }));
+
   const submit = (event) => {
     event.preventDefault();
-    const amount = Number(form.amount);
+    const carat = Number(form.diamondCarat);
+    const rate = Number(String(form.perCaratRate).replace(/,/g, ""));
+    const terms = Number(form.terms);
+    const dueDays = Number(form.dueDays);
     const brokerageRate = Number(form.brokerageRate);
-    if (
-      !form.name ||
-      !form.date ||
-      !form.amount ||
-      !form.sellerId ||
-      !form.buyerId ||
-      !Number.isFinite(amount) ||
-      amount <= 0 ||
-      !Number.isFinite(brokerageRate) ||
-      brokerageRate < 0
-    ) return setError("Complete all required fields with valid values.");
-    if (form.sellerId === form.buyerId) return setError("Seller and buyer must be different dealers.");
+
+    if (!form.name.trim()) return setError("Please enter a transaction name.");
+    if (!form.date) return setError("Please select a transaction date.");
+    if (!form.diamondCarat || !Number.isFinite(carat) || carat <= 0) {
+      return setError("Diamond carat must be a valid number greater than 0.");
+    }
+    if (!form.perCaratRate || !Number.isFinite(rate) || rate <= 0) {
+      return setError("Per carat rate must be a valid amount greater than 0.");
+    }
+    if (form.terms === "" || !Number.isFinite(terms) || terms < 0) {
+      return setError("Terms (%) must be 0 or greater.");
+    }
+    if (form.dueDays === "" || !Number.isFinite(dueDays) || dueDays < 0) {
+      return setError("Due days must be 0 or greater.");
+    }
+    if (form.sellType === "Other" && !form.otherSellType.trim()) {
+      return setError("Please specify the other sell type.");
+    }
+    if (!form.sellerId) return setError("Please select a seller dealer.");
+    if (!form.buyerId) return setError("Please select a buyer dealer.");
+    if (form.sellerId === form.buyerId) {
+      return setError("Seller and buyer must be different dealers.");
+    }
+
+    const totalRate = Math.round(carat * rate * 100) / 100;
+    const earned = Math.round(((totalRate * (Number.isFinite(brokerageRate) ? brokerageRate : 5)) / 100) * 100) / 100;
+
     const transaction = {
       id: nextId("TRX", data.transactions),
-      name: form.name,
+      name: form.name.trim(),
       date: form.date,
-      amount,
-      dealerId: form.sellerId,
+      diamondCarat: carat,
+      perCaratRate: rate,
+      totalRate,
+      amount: totalRate,
+      terms,
+      dueDays,
+      sellType: form.sellType,
+      otherSellType: form.sellType === "Other" ? form.otherSellType.trim() : "",
       sellerId: form.sellerId,
+      dealerId: form.sellerId,
       buyerId: form.buyerId,
-      brokerageRate,
-      brokerageEarned,
-      paymentMethod: form.paymentMethod,
-      notes: form.notes,
-      status: form.status,
+      brokerageRate: Number.isFinite(brokerageRate) ? brokerageRate : 5,
+      brokerageEarned: earned,
+      paymentMethod: form.paymentMethod || "Bank transfer",
+      notes: form.notes.trim(),
+      status: form.status || "Pending",
     };
+
     addTransaction(transaction);
     onNavigate("/transaction-details?id=" + transaction.id);
   };
+
   return (
     <>
       <PageHeader
@@ -962,8 +1043,9 @@ function NewTransaction({ onNavigate }) {
       <form className="grouped-form" onSubmit={submit}>
         <Panel title="Deal details" className="form-panel">
           <div className="form-grid">
-            <label>
-              Lot / transaction name
+            <label className="field-group">
+              <span className="field-title">Transaction Name</span>
+              <span className="field-desc">Enter a name to identify this transaction.</span>
               <input
                 name="name"
                 value={form.name}
@@ -972,8 +1054,10 @@ function NewTransaction({ onNavigate }) {
                 required
               />
             </label>
-            <label>
-              Transaction date
+
+            <label className="field-group">
+              <span className="field-title">Transaction Date</span>
+              <span className="field-desc">Date of transaction</span>
               <input
                 name="date"
                 type="date"
@@ -982,32 +1066,167 @@ function NewTransaction({ onNavigate }) {
                 required
               />
             </label>
-            <label className="full">
-              Total amount
+
+            <label className="field-group">
+              <span className="field-title">Diamond Carat</span>
+              <span className="field-desc">Weight in carats (e.g. 10.50)</span>
               <input
-                name="amount"
+                name="diamondCarat"
                 type="text"
                 inputMode="decimal"
                 pattern="[0-9.]*"
-                value={form.amount}
+                value={form.diamondCarat}
                 onChange={(event) =>
                   setForm((previous) => ({
                     ...previous,
-                    amount: event.target.value
+                    diamondCarat: event.target.value
                       .replace(/[^0-9.]/g, "")
                       .replace(/(\..*)\./g, "$1"),
                   }))
                 }
-                placeholder={"\u20b9 0.00"}
+                placeholder="e.g. 10.50"
                 required
+              />
+            </label>
+
+            <label className="field-group">
+              <span className="field-title">Per Carat Rate</span>
+              <span className="field-desc">Price per carat in INR</span>
+              <div className="input-with-symbol">
+                <span className="input-symbol">₹</span>
+                <input
+                  name="perCaratRate"
+                  type="text"
+                  inputMode="numeric"
+                  value={form.perCaratRate}
+                  onChange={(event) => {
+                    const raw = event.target.value
+                      .replace(/[^0-9.]/g, "")
+                      .replace(/(\..*)\./g, "$1");
+                    setForm((previous) => ({
+                      ...previous,
+                      perCaratRate: raw ? formatIndianNumber(raw) : "",
+                    }));
+                  }}
+                  placeholder="e.g. 50,000"
+                  required
+                />
+              </div>
+            </label>
+
+            <div className="field-group calculated-cell">
+              <div className="calculated-field-card">
+                <div className="calc-header">
+                  <span className="field-title">Total Rate</span>
+                  <span className="calc-badge">Auto Calculated</span>
+                </div>
+                <div className="calc-value">{money(totalRateValue)}</div>
+                <span className="calc-formula">Carat × Per Carat Rate</span>
+              </div>
+            </div>
+
+            <label className="field-group">
+              <span className="field-title">Terms (%)</span>
+              <span className="field-desc">Percentage terms (e.g. 2%)</span>
+              <input
+                name="terms"
+                type="text"
+                inputMode="decimal"
+                pattern="[0-9.]*"
+                value={form.terms}
+                onChange={(event) =>
+                  setForm((previous) => ({
+                    ...previous,
+                    terms: event.target.value
+                      .replace(/[^0-9.]/g, "")
+                      .replace(/(\..*)\./g, "$1"),
+                  }))
+                }
+                placeholder="e.g. 2"
+                required
+              />
+            </label>
+
+            <label className="field-group">
+              <span className="field-title">Due Days</span>
+              <span className="field-desc">Days until payment is due</span>
+              <input
+                name="dueDays"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={form.dueDays}
+                onChange={(event) =>
+                  setForm((previous) => ({
+                    ...previous,
+                    dueDays: event.target.value.replace(/[^0-9]/g, ""),
+                  }))
+                }
+                placeholder="e.g. 30"
+                required
+              />
+            </label>
+
+            <div className="field-group">
+              <span className="field-title">Sell Type</span>
+              <span className="field-desc">Select sales channel</span>
+              <div className="segmented-control" role="radiogroup" aria-label="Sell Type">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={form.sellType === "Self"}
+                  className={`segmented-btn ${form.sellType === "Self" ? "active" : ""}`}
+                  onClick={() => setForm((prev) => ({ ...prev, sellType: "Self" }))}
+                >
+                  Self
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={form.sellType === "Other"}
+                  className={`segmented-btn ${form.sellType === "Other" ? "active" : ""}`}
+                  onClick={() => setForm((prev) => ({ ...prev, sellType: "Other" }))}
+                >
+                  Other
+                </button>
+              </div>
+              {form.sellType === "Other" && (
+                <div className="other-sell-field">
+                  <label className="field-group subfield-margin">
+                    <span className="field-title">Other Sell Type</span>
+                    <input
+                      name="otherSellType"
+                      type="text"
+                      value={form.otherSellType}
+                      onChange={set}
+                      placeholder="Enter sell type (e.g. Wholesale)"
+                      required
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
+
+            <label className="field-group full">
+              <div className="label-with-badge">
+                <span className="field-title">Notes</span>
+                <span className="optional-tag">Optional</span>
+              </div>
+              <span className="field-desc">Add any notes about this transaction...</span>
+              <textarea
+                name="notes"
+                value={form.notes}
+                onChange={set}
+                placeholder="Add any notes about this transaction..."
               />
             </label>
           </div>
         </Panel>
+
         <Panel title="Parties involved" className="form-panel">
           <div className="party-flow">
-            <label>
-              Seller
+            <label className="field-group">
+              <span className="field-title">Seller</span>
               <select name="sellerId" value={form.sellerId} onChange={set} required>
                 <option value="">Select existing dealer</option>
                 {data.dealers.map((dealer) => (
@@ -1016,8 +1235,8 @@ function NewTransaction({ onNavigate }) {
               </select>
             </label>
             <div className="party-connector" aria-hidden="true"><span>→</span><b>BROKERAGE</b><span>→</span></div>
-            <label>
-              Buyer
+            <label className="field-group">
+              <span className="field-title">Buyer</span>
               <select name="buyerId" value={form.buyerId} onChange={set} required>
                 <option value="">Select existing dealer</option>
                 {data.dealers.map((dealer) => (
@@ -1027,53 +1246,58 @@ function NewTransaction({ onNavigate }) {
             </label>
           </div>
         </Panel>
+
         <Panel title="Brokerage" className="form-panel">
           <div className="form-grid">
-            <label>
-              Brokerage (%)
+            <label className="field-group">
+              <span className="field-title">Brokerage (%)</span>
+              <span className="field-desc">Broker fee percentage</span>
               <input
                 name="brokerageRate"
                 type="text"
                 inputMode="decimal"
                 pattern="[0-9.]*"
                 value={form.brokerageRate}
-                onChange={(event) => setForm((previous) => ({ ...previous, brokerageRate: event.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1") }))}
+                onChange={(event) =>
+                  setForm((previous) => ({
+                    ...previous,
+                    brokerageRate: event.target.value
+                      .replace(/[^0-9.]/g, "")
+                      .replace(/(\..*)\./g, "$1"),
+                  }))
+                }
                 placeholder="1.00"
                 required
               />
             </label>
-            <div className="earned-field"><span>Brokerage earned</span><strong>{money(brokerageEarned)}</strong></div>
-            <label className="full">
-              Payment method
+            <div className="earned-field">
+              <span>Brokerage earned</span>
+              <strong>{money(brokerageEarned)}</strong>
+            </div>
+            <label className="field-group full">
+              <span className="field-title">Payment method</span>
               <select name="paymentMethod" value={form.paymentMethod} onChange={set}>
-                <option>Bank transfer</option><option>Credit card</option><option>Cash</option>
+                <option>Bank transfer</option>
+                <option>Credit card</option>
+                <option>Cash</option>
               </select>
             </label>
           </div>
         </Panel>
+
         <Panel title="Transaction status" className="form-panel">
           <div className="form-grid">
-            <label>
-              Status
+            <label className="field-group">
+              <span className="field-title">Status</span>
               <select name="status" value={form.status} onChange={set} required>
-                <option>Pending</option><option>Processing</option><option>Completed</option>
+                <option>Pending</option>
+                <option>Processing</option>
+                <option>Completed</option>
               </select>
             </label>
           </div>
         </Panel>
-        <Panel title="Notes" className="form-panel">
-          <div className="form-grid">
-            <label className="full">
-              Notes
-              <textarea
-                name="notes"
-                value={form.notes}
-                onChange={set}
-                placeholder="Add notes about this transaction"
-              />
-            </label>
-          </div>
-        </Panel>
+
         {error && (
           <div className="form-error" role="alert">
             {error}
