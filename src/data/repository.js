@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'diamond-finance-data-v2';
+const STORAGE_KEY = 'diamond-finance-data-v3';
 const SETTINGS_KEY = 'diamond-finance-settings-v1';
 
 export const seedData = {
@@ -48,10 +48,7 @@ export const seedData = {
   ],
   dealers: [
     { id: 'dealer-abc', name: 'ABC Diamonds', location: 'Mumbai, India', contact: 'Alex Brown', email: 'alex@abcdiamonds.com', phone: '+91 22 5550 0198', status: 'Active' },
-    { id: 'dealer-golden', name: 'Golden Carats', location: 'Delhi, India', contact: 'Maya Shah', email: 'maya@goldencarats.com', phone: '+91 11 5550 0186', status: 'Active' },
-    { id: 'dealer-gem', name: 'The Gem House', location: 'Chicago, IL', contact: 'Sam Lee', email: 'sam@gemhouse.com', phone: '+1 312 555 0163', status: 'Active' },
-    { id: 'dealer-district', name: 'Diamond District', location: 'Los Angeles, CA', contact: 'Nina Patel', email: 'nina@diamonddistrict.com', phone: '+1 213 555 0098', status: 'Inactive' },
-    { id: 'dealer-elite', name: 'Elite Stones', location: 'Jaipur, India', contact: 'Ravi Mehta', email: 'ravi@elitestones.com', phone: '+91 141 555 0123', status: 'Active' }
+    { id: 'dealer-golden', name: 'Golden Carats', location: 'Delhi, India', contact: 'Maya Shah', email: 'maya@goldencarats.com', phone: '+91 11 5550 0186', status: 'Active' }
   ],
   payments: [
     { id: 'PAY-8300', transactionId: 'TRX-20481', dealerId: 'dealer-abc', date: '2024-09-03', amount: 500000, method: 'Bank transfer', status: 'Completed' },

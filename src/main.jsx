@@ -24,6 +24,8 @@ import {
   Download,
   Check,
   CalendarDays,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import "./styles.css";
 import {
@@ -101,6 +103,60 @@ function App() {
       ...previous,
       payments: [...previous.payments, payment],
     }));
+  const addDealer = (dealer) => {
+    const id = nextId("dealer", data.dealers);
+    const item = {
+      id,
+      name: dealer.name.trim(),
+      location: dealer.location.trim(),
+      phone: (dealer.phone || "").trim(),
+      email: (dealer.email || "").trim(),
+      contact: (dealer.contact || dealer.name).trim(),
+      status: dealer.status || "Active",
+    };
+    updateData((previous) => ({
+      ...previous,
+      dealers: [...previous.dealers, item],
+    }));
+    return item;
+  };
+  const updateDealer = (id, updated) => {
+    updateData((previous) => ({
+      ...previous,
+      dealers: previous.dealers.map((d) =>
+        d.id === id
+          ? {
+              ...d,
+              ...updated,
+              name: updated.name !== undefined ? updated.name.trim() : d.name,
+              location: updated.location !== undefined ? updated.location.trim() : d.location,
+              phone: updated.phone !== undefined ? updated.phone.trim() : d.phone,
+              email: updated.email !== undefined ? updated.email.trim() : d.email,
+              contact: updated.contact !== undefined ? updated.contact.trim() : (updated.name ? updated.name.trim() : d.contact),
+              status: updated.status || d.status,
+            }
+          : d
+      ),
+    }));
+  };
+  const deleteDealer = (id) => {
+    const isUsed =
+      data.transactions.some(
+        (t) => t.dealerId === id || t.sellerId === id || t.buyerId === id
+      ) || data.payments.some((p) => p.dealerId === id);
+
+    if (isUsed) {
+      return {
+        success: false,
+        reason: "This dealer is used in an existing transaction.",
+      };
+    }
+    updateData((previous) => ({
+      ...previous,
+      dealers: previous.dealers.filter((d) => d.id !== id),
+    }));
+    return { success: true };
+  };
   React.useEffect(() => {
     const fn = () => setCurrent(routeName());
     const escape = (event) => {
@@ -129,7 +185,15 @@ function App() {
   };
   return (
     <DataContext.Provider
-      value={{ data, addTransaction, addPayment, updateData }}
+      value={{
+        data,
+        addTransaction,
+        addPayment,
+        addDealer,
+        updateDealer,
+        deleteDealer,
+        updateData,
+      }}
     >
       <div className="app-shell">
         <Sidebar
@@ -1322,13 +1386,27 @@ function NewTransaction({ onNavigate }) {
   );
 }
 function DealerProfile({ onNavigate }) {
-  const { data } = useData();
+  const { data, updateDealer } = useData();
+  const [editModal, setEditModal] = useState(false);
   const id =
-    new URLSearchParams(window.location.search).get("id") || "dealer-abc";
+    new URLSearchParams(window.location.search).get("id") || data.dealers[0]?.id || "dealer-abc";
   const dealer = data.dealers.find((item) => item.id === id) || data.dealers[0];
-  const dealerTransactions = data.transactions.filter(
-    (item) => item.dealerId === dealer.id,
-  );
+  const dealerTransactions = dealer
+    ? data.transactions.filter(
+        (item) => item.dealerId === dealer.id || item.sellerId === dealer.id,
+      )
+    : [];
+
+  if (!dealer) {
+    return (
+      <Panel title="Dealer not found">
+        <div style={{ padding: "20px" }}>
+          <Button onClick={() => onNavigate("/dealers")}>Back to dealers</Button>
+        </div>
+      </Panel>
+    );
+  }
+
   return (
     <>
       <PageHeader
@@ -1339,22 +1417,27 @@ function DealerProfile({ onNavigate }) {
         title={dealer.name}
         description="Dealer profile and transaction history."
         action={
-          <Button
-            secondary
-            onClick={() =>
-              downloadCsv(
-                `${dealer.id}-transactions.csv`,
-                ["ID", "Dealer", "Date", "Amount", "Status"],
-                transactionRows({
-                  ...data,
-                  transactions: dealerTransactions,
-                }).map((row) => row.slice(0, 5)),
-              )
-            }
-            icon={Download}
-          >
-            Export history
-          </Button>
+          <div className="header-actions">
+            <Button secondary onClick={() => setEditModal(true)} icon={Pencil}>
+              Edit dealer
+            </Button>
+            <Button
+              secondary
+              onClick={() =>
+                downloadCsv(
+                  `${dealer.id}-transactions.csv`,
+                  ["ID", "Dealer", "Date", "Amount", "Status"],
+                  transactionRows({
+                    ...data,
+                    transactions: dealerTransactions,
+                  }).map((row) => row.slice(0, 5)),
+                )
+              }
+              icon={Download}
+            >
+              Export history
+            </Button>
+          </div>
         }
       />
       <Panel className="dealer-profile-head">
@@ -1363,7 +1446,9 @@ function DealerProfile({ onNavigate }) {
           <div>
             <h2>{dealer.name}</h2>
             <small>
-              {dealer.location} - {dealer.contact}
+              {dealer.location}
+              {dealer.phone ? ` • ${dealer.phone}` : ""}
+              {dealer.email ? ` • ${dealer.email}` : ""}
             </small>
             <Status>{dealer.status}</Status>
           </div>
@@ -1385,7 +1470,7 @@ function DealerProfile({ onNavigate }) {
         <Stat
           label="Total volume"
           value={money(
-            dealerTransactions.reduce((sum, item) => sum + item.amount, 0),
+            dealerTransactions.reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0),
           )}
           change="8.2%"
           icon={CircleDollarSign}
@@ -1394,7 +1479,7 @@ function DealerProfile({ onNavigate }) {
           label="Avg. transaction"
           value={money(
             dealerTransactions.length
-              ? dealerTransactions.reduce((sum, item) => sum + item.amount, 0) /
+              ? dealerTransactions.reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0) /
                   dealerTransactions.length
               : 0,
           )}
@@ -1405,17 +1490,190 @@ function DealerProfile({ onNavigate }) {
       <Panel title="Transaction history">
         <TransactionTable
           rows={transactionRows({ ...data, transactions: dealerTransactions })}
-          onRowClick={(id) => onNavigate("/transaction-details?id=" + id)}
+          onRowClick={(rowId) => onNavigate("/transaction-details?id=" + rowId)}
         />
       </Panel>
+
+      <DealerModal
+        open={editModal}
+        onClose={() => setEditModal(false)}
+        dealer={dealer}
+        onSave={(updated) => updateDealer(dealer.id, updated)}
+      />
     </>
   );
 }
-function DesktopDealers({ onNavigate }) {
+
+function DealerModal({ open, onClose, dealer, onSave }) {
+  const [form, setForm] = useState({
+    name: "",
+    location: "",
+    phone: "",
+    email: "",
+    status: "Active",
+  });
+  const [error, setError] = useState("");
+
+  React.useEffect(() => {
+    if (dealer && dealer.id) {
+      setForm({
+        name: dealer.name || "",
+        location: dealer.location || "",
+        phone: dealer.phone || "",
+        email: dealer.email || "",
+        status: dealer.status || "Active",
+      });
+    } else {
+      setForm({
+        name: "",
+        location: "",
+        phone: "",
+        email: "",
+        status: "Active",
+      });
+    }
+    setError("");
+  }, [dealer, open]);
+
+  if (!open) return null;
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!form.name.trim()) return setError("Please enter a dealer name.");
+    if (!form.location.trim()) return setError("Please enter a location.");
+
+    onSave({
+      name: form.name.trim(),
+      location: form.location.trim(),
+      phone: form.phone.trim(),
+      email: form.email.trim(),
+      status: form.status,
+    });
+    onClose();
+  };
+
+  const isEdit = Boolean(dealer && dealer.id);
+
+  return (
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h3>{isEdit ? "Edit dealer" : "Add dealer"}</h3>
+          <button className="icon-btn" onClick={onClose} aria-label="Close modal">
+            <X size={16} />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body">
+            {error && <div className="form-error">{error}</div>}
+            <label className="field-group">
+              <span className="field-title">Dealer Name</span>
+              <input
+                value={form.name}
+                onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+                placeholder="e.g. ABC Diamonds"
+                required
+              />
+            </label>
+            <label className="field-group">
+              <span className="field-title">Location</span>
+              <input
+                value={form.location}
+                onChange={(e) => setForm((p) => ({ ...p, location: e.target.value }))}
+                placeholder="e.g. Mumbai, India"
+                required
+              />
+            </label>
+            <label className="field-group">
+              <span className="field-title">Phone (Optional)</span>
+              <input
+                value={form.phone}
+                onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
+                placeholder="+91 22 5550 0198"
+              />
+            </label>
+            <label className="field-group">
+              <span className="field-title">Email (Optional)</span>
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
+                placeholder="alex@abcdiamonds.com"
+              />
+            </label>
+            {isEdit && (
+              <label className="field-group">
+                <span className="field-title">Status</span>
+                <select
+                  value={form.status}
+                  onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}
+                >
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Inactive</option>
+                </select>
+              </label>
+            )}
+          </div>
+          <div className="modal-actions">
+            <Button secondary type="button" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit">
+              {isEdit ? "Save changes" : "Add Dealer"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function DeleteDealerModal({ dealer, onClose, onConfirm, isUsed }) {
+  if (!dealer) return null;
+
+  return (
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h3>Remove {dealer.name}?</h3>
+          <button className="icon-btn" onClick={onClose} aria-label="Close modal">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="modal-body">
+          {isUsed ? (
+            <div className="delete-warning-box">
+              This dealer is used in an existing transaction.
+            </div>
+          ) : (
+            <p className="delete-confirm-text">
+              Are you sure you want to remove <b>{dealer.name}</b>?
+            </p>
+          )}
+        </div>
+        <div className="modal-actions">
+          <Button secondary type="button" onClick={onClose}>
+            Cancel
+          </Button>
+          {!isUsed && (
+            <button
+              type="button"
+              className="button danger"
+              onClick={() => onConfirm(dealer.id)}
+            >
+              Remove
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DesktopDealers({ onNavigate, onAdd, onEdit, onDelete }) {
   const { data } = useData();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("All");
-  const [notice, setNotice] = useState("");
   const list = data.dealers.filter((dealer) =>
     `${dealer.name} ${dealer.location}`
       .toLowerCase()
@@ -1432,22 +1690,11 @@ function DesktopDealers({ onNavigate }) {
         title="Dealers"
         description="Manage your network of diamond dealers."
         action={
-          <Button
-            onClick={() =>
-              setNotice(
-                "Dealer invitations are available when a workspace email is connected.",
-              )
-            }
-          >
-            Invite dealer
+          <Button onClick={onAdd} icon={Plus}>
+            Add dealer
           </Button>
         }
       />
-      {notice && (
-        <div className="notice" role="status">
-          {notice}
-        </div>
-      )}
       <div className="stats-grid three">
         <Stat
           label="Total dealers"
@@ -1464,7 +1711,7 @@ function DesktopDealers({ onNavigate }) {
         <Stat
           label="Total volume"
           value={money(
-            data.transactions.reduce((sum, item) => sum + item.amount, 0),
+            data.transactions.reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0),
           )}
           change="14.8%"
           icon={CircleDollarSign}
@@ -1505,14 +1752,17 @@ function DesktopDealers({ onNavigate }) {
                   <th>Transactions</th>
                   <th>Total volume</th>
                   <th>Status</th>
-                  <th />
+                  <th style={{ textAlign: "right", paddingRight: "20px" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {list.map((dealer) => {
                   const volume = data.transactions
-                    .filter((item) => item.dealerId === dealer.id)
-                    .reduce((sum, item) => sum + item.amount, 0);
+                    .filter((item) => item.dealerId === dealer.id || item.sellerId === dealer.id)
+                    .reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0);
+                  const count = data.transactions.filter(
+                    (item) => item.dealerId === dealer.id || item.sellerId === dealer.id,
+                  ).length;
                   return (
                     <tr
                       key={dealer.id}
@@ -1536,13 +1786,7 @@ function DesktopDealers({ onNavigate }) {
                         </div>
                       </td>
                       <td>{dealer.location}</td>
-                      <td>
-                        {
-                          data.transactions.filter(
-                            (item) => item.dealerId === dealer.id,
-                          ).length
-                        }
-                      </td>
+                      <td>{count}</td>
                       <td>
                         <b>{money(volume)}</b>
                       </td>
@@ -1550,16 +1794,30 @@ function DesktopDealers({ onNavigate }) {
                         <Status>{dealer.status}</Status>
                       </td>
                       <td>
-                        <button
-                          className="icon-btn"
-                          aria-label={`View actions for ${dealer.name}`}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onNavigate("/dealer-profile?id=" + dealer.id);
-                          }}
-                        >
-                          <MoreHorizontal size={18} />
-                        </button>
+                        <div className="table-actions">
+                          <button
+                            type="button"
+                            className="btn-action"
+                            aria-label={`Edit ${dealer.name}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onEdit(dealer);
+                            }}
+                          >
+                            <Pencil size={13} /> Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-action danger"
+                            aria-label={`Remove ${dealer.name}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onDelete(dealer);
+                            }}
+                          >
+                            <Trash2 size={13} /> Remove
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1571,7 +1829,7 @@ function DesktopDealers({ onNavigate }) {
           <div className="empty-state">
             <Search size={20} />
             <b>No dealers found</b>
-            <span>Try a different search term.</span>
+            <span>Try adding a new dealer or a different search term.</span>
           </div>
         )}
       </Panel>
@@ -2011,7 +2269,7 @@ function Reports({ onNavigate }) {
   );
 }
 
-function Dealers({ onNavigate }) {
+function MobileDealers({ onNavigate, onAdd, onEdit, onDelete }) {
   const { data } = useData();
   const [query, setQuery] = useState("");
   const list = data.dealers.filter((dealer) =>
@@ -2021,10 +2279,11 @@ function Dealers({ onNavigate }) {
   );
   const items = list.map((dealer) => {
     const records = data.transactions.filter(
-      (item) => item.dealerId === dealer.id,
+      (item) => item.dealerId === dealer.id || item.sellerId === dealer.id,
     );
-    const volume = records.reduce((sum, item) => sum + item.amount, 0);
+    const volume = records.reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0);
     return {
+      raw: dealer,
       id: dealer.id,
       title: dealer.name,
       subtitle: dealer.location,
@@ -2034,53 +2293,145 @@ function Dealers({ onNavigate }) {
     };
   });
   return (
+    <div className="mobile-dealers">
+      <PageHeader
+        backTo="/"
+        backLabel="Back to Dashboard"
+        onNavigate={onNavigate}
+        eyebrow="Manage"
+        title="Dealers"
+        description="Manage your network of diamond dealers."
+        action={
+          <Button onClick={onAdd} icon={Plus}>
+            Add dealer
+          </Button>
+        }
+      />
+      <Panel
+        title="All dealers"
+        action={
+          <SearchInput
+            value={query}
+            onChange={setQuery}
+            placeholder="Search dealers..."
+          />
+        }
+      >
+        <div className="mobile-card-list">
+          {items.map((item) => (
+            <div
+              key={item.id}
+              className="mobile-card-item"
+              onClick={() => onNavigate("/dealer-profile?id=" + item.id)}
+              role="button"
+              tabIndex={0}
+            >
+              <div className="mobile-card-main">
+                <div className="mobile-card-copy">
+                  <b>{item.title}</b>
+                  <span>{item.subtitle}</span>
+                </div>
+                <div className="mobile-card-amount">{item.amount}</div>
+              </div>
+              <div className="mobile-card-meta">
+                <span>{item.meta}</span>
+                <Status>{item.status}</Status>
+              </div>
+              <div className="mobile-card-actions" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  className="link-btn-subtle"
+                  onClick={() => onEdit(item.raw)}
+                >
+                  Edit
+                </button>
+                <span className="dot-sep">•</span>
+                <button
+                  type="button"
+                  className="link-btn-subtle danger"
+                  onClick={() => onDelete(item.raw)}
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))}
+          {!items.length && (
+            <div className="empty-state">
+              <Search size={20} />
+              <b>No dealers found</b>
+              <span>Try adding a new dealer.</span>
+            </div>
+          )}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function Dealers({ onNavigate }) {
+  const { data, addDealer, updateDealer, deleteDealer } = useData();
+  const [modalDealer, setModalDealer] = useState(null);
+  const [deletingDealer, setDeletingDealer] = useState(null);
+
+  const handleSave = (dealerData) => {
+    if (modalDealer && modalDealer.id) {
+      updateDealer(modalDealer.id, dealerData);
+    } else {
+      addDealer(dealerData);
+    }
+  };
+
+  const isDeletingUsed = Boolean(
+    deletingDealer &&
+      (data.transactions.some(
+        (t) =>
+          t.dealerId === deletingDealer.id ||
+          t.sellerId === deletingDealer.id ||
+          t.buyerId === deletingDealer.id,
+      ) ||
+        data.payments.some((p) => p.dealerId === deletingDealer.id)),
+  );
+
+  const handleConfirmDelete = (id) => {
+    const res = deleteDealer(id);
+    if (res.success) {
+      setDeletingDealer(null);
+    }
+  };
+
+  return (
     <>
       <div className="desktop-dealers">
-        <DesktopDealers onNavigate={onNavigate} />
+        <DesktopDealers
+          onNavigate={onNavigate}
+          onAdd={() => setModalDealer({})}
+          onEdit={(d) => setModalDealer(d)}
+          onDelete={(d) => setDeletingDealer(d)}
+        />
       </div>
       <div className="mobile-dealers">
-        <PageHeader
-          backTo="/"
-          backLabel="Back to Dashboard"
+        <MobileDealers
           onNavigate={onNavigate}
-          eyebrow="Manage"
-          title="Dealers"
-          description="Manage your network of diamond dealers."
+          onAdd={() => setModalDealer({})}
+          onEdit={(d) => setModalDealer(d)}
+          onDelete={(d) => setDeletingDealer(d)}
         />
-        <Panel
-          title="All dealers"
-          action={
-            <SearchInput
-              value={query}
-              onChange={setQuery}
-              placeholder="Search dealers..."
-            />
-          }
-        >
-          <div className="mobile-card-list">
-            {items.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className="mobile-card-item"
-                onClick={() => onNavigate("/dealer-profile?id=" + item.id)}
-              >
-                <div className="mobile-card-main">
-                  <div className="mobile-card-copy">
-                    <b>{item.title}</b>
-                    <span>{item.subtitle}</span>
-                  </div>
-                  <div className="mobile-card-amount">{item.amount}</div>
-                </div>
-                <div className="mobile-card-meta">
-                  <span>{item.meta}</span>
-                  <Status>{item.status}</Status>
-                </div>
-              </button>
-            ))}
-          </div>
-        </Panel>
       </div>
+
+      <DealerModal
+        open={Boolean(modalDealer)}
+        onClose={() => setModalDealer(null)}
+        dealer={modalDealer}
+        onSave={handleSave}
+      />
+
+      <DeleteDealerModal
+        dealer={deletingDealer}
+        onClose={() => setDeletingDealer(null)}
+        onConfirm={handleConfirmDelete}
+        isUsed={isDeletingUsed}
+      />
     </>
   );
 }
