@@ -29,10 +29,19 @@ import {
 } from "lucide-react";
 import "./styles.css";
 import {
+  authSignIn,
+  authSignUp,
+  authSignOut,
+  authGetSession,
+} from "./data/supabaseClient";
+import {
   dealerTypeLabel,
   localRepository,
+  supabaseRepository,
   loadSettings,
   money,
+  formatChartAmount,
+  calculateAnalytics,
   nextId,
   saveSettings,
   transactionRows,
@@ -44,7 +53,7 @@ const navItems = [
   { label: "Dealers", icon: Users, path: "/dealers" },
   { label: "Payments", icon: CreditCard, path: "/payments" },
   { label: "Earnings", icon: BarChart3, path: "/earnings" },
-  { label: "Reports", icon: FileBarChart, path: "/reports" },
+  { label: "Analytics", icon: FileBarChart, path: "/analytics" },
   { label: "Settings", icon: Settings, path: "/settings" },
 ];
 
@@ -87,23 +96,57 @@ function App() {
   const [drawer, setDrawer] = useState(false);
   const [menu, setMenu] = useState(null);
   const [data, setData] = useState(() => localRepository().load());
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
   const repository = localRepository();
+  const supabaseRepo = supabaseRepository();
+
+  React.useEffect(() => {
+    authGetSession().then((session) => {
+      if (session?.user) {
+        setUser(session.user);
+      }
+      setAuthLoading(false);
+    });
+
+    supabaseRepo.loadAll().then((remoteData) => {
+      if (remoteData) setData(remoteData);
+    });
+  }, []);
+
+  const handleLogout = async () => {
+    await authSignOut();
+    setUser(null);
+    setMenu(null);
+    navigate("/login");
+  };
+
+  const handleLoginSuccess = (authenticatedUser) => {
+    setUser(authenticatedUser);
+    navigate("/");
+  };
+
   const updateData = (updater) =>
     setData((previous) => {
       const next = updater(previous);
       repository.save(next);
       return next;
     });
-  const addTransaction = (transaction) =>
+  const addTransaction = (transaction) => {
     updateData((previous) => ({
       ...previous,
       transactions: [...previous.transactions, transaction],
     }));
-  const addPayment = (payment) =>
+    supabaseRepo.insertTransaction(transaction);
+  };
+  const addPayment = (payment) => {
     updateData((previous) => ({
       ...previous,
       payments: [...previous.payments, payment],
     }));
+    supabaseRepo.insertPayment(payment);
+  };
   const addDealer = (dealer) => {
     const id = nextId("dealer", data.dealers);
     const item = {
@@ -120,27 +163,32 @@ function App() {
       ...previous,
       dealers: [...previous.dealers, item],
     }));
+    supabaseRepo.insertDealer(item);
     return item;
   };
   const updateDealer = (id, updated) => {
+    const cleanUpdated = {
+      ...updated,
+      name: updated.name !== undefined ? updated.name.trim() : undefined,
+      location: updated.location !== undefined ? updated.location.trim() : undefined,
+      type: updated.type !== undefined ? (updated.type || "both").toLowerCase() : undefined,
+      phone: updated.phone !== undefined ? updated.phone.trim() : undefined,
+      email: updated.email !== undefined ? updated.email.trim() : undefined,
+      contact: updated.contact !== undefined ? updated.contact.trim() : (updated.name ? updated.name.trim() : undefined),
+      status: updated.status,
+    };
     updateData((previous) => ({
       ...previous,
       dealers: previous.dealers.map((d) =>
         d.id === id
           ? {
               ...d,
-              ...updated,
-              name: updated.name !== undefined ? updated.name.trim() : d.name,
-              location: updated.location !== undefined ? updated.location.trim() : d.location,
-              type: (updated.type || d.type || "both").toLowerCase(),
-              phone: updated.phone !== undefined ? updated.phone.trim() : d.phone,
-              email: updated.email !== undefined ? updated.email.trim() : d.email,
-              contact: updated.contact !== undefined ? updated.contact.trim() : (updated.name ? updated.name.trim() : d.contact),
-              status: updated.status || d.status,
+              ...cleanUpdated,
             }
           : d
       ),
     }));
+    supabaseRepo.updateDealer(id, cleanUpdated);
   };
   const deleteDealer = (id) => {
     const isUsed =
@@ -158,6 +206,7 @@ function App() {
       ...previous,
       dealers: previous.dealers.filter((d) => d.id !== id),
     }));
+    supabaseRepo.deleteDealer(id);
     return { success: true };
   };
   React.useEffect(() => {
@@ -186,10 +235,37 @@ function App() {
     setDrawer(false);
     setMenu(null);
   };
+
+  if (authLoading) {
+    return (
+      <div className="login-shell">
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", color: "var(--muted)", fontSize: "13px" }}>
+          <div className="brand-mark" style={{ width: "40px", height: "40px", borderRadius: "10px" }}>
+            <Gem size={22} />
+          </div>
+          <span>Loading workspace...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user || current === "Login") {
+    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+  }
+
+  const userName = user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Jordan Davis";
+  const userInitials = userName
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
   return (
     <DataContext.Provider
       value={{
         data,
+        user,
         addTransaction,
         addPayment,
         addDealer,
@@ -204,6 +280,9 @@ function App() {
           onNavigate={go}
           open={drawer}
           onClose={() => setDrawer(false)}
+          userName={userName}
+          userEmail={user?.email || "jordan@diamond.com"}
+          userInitials={userInitials}
         />
         <main className="main-area">
           <header className="topbar">
@@ -267,21 +346,22 @@ function App() {
                 aria-label="Open profile"
                 onClick={() => setMenu(menu === "profile" ? null : "profile")}
               >
-                JD
+                {userInitials}
               </button>
               <button
                 className="profile-name"
                 onClick={() => setMenu(menu === "profile" ? null : "profile")}
               >
-                Jordan Davis <ChevronDown size={14} />
+                {userName} <ChevronDown size={14} />
               </button>
               {menu === "profile" && (
                 <div className="top-menu">
-                  <b>Jordan Davis</b>
+                  <b>{userName}</b>
+                  <span style={{ fontSize: "11px", color: "var(--muted)" }}>{user?.email}</span>
                   <button onClick={() => go("/settings")}>
                     Account settings
                   </button>
-                  <button onClick={() => setMenu(null)}>Sign out</button>
+                  <button onClick={handleLogout}>Sign out</button>
                 </div>
               )}
             </div>
@@ -299,7 +379,7 @@ function App() {
   );
 }
 
-function Sidebar({ current, onNavigate, open, onClose }) {
+function Sidebar({ current, onNavigate, open, onClose, userName = "Jordan Davis", userEmail = "jordan@diamond.com", userInitials = "JD" }) {
   return (
     <>
       {open && <div className="scrim" onClick={onClose} />}
@@ -344,7 +424,8 @@ function Sidebar({ current, onNavigate, open, onClose }) {
             const related =
               (item.label === "Transactions" &&
                 ["Transaction Details", "New Transaction"].includes(current)) ||
-              (item.label === "Dealers" && current === "Dealer Profile");
+              (item.label === "Dealers" && current === "Dealer Profile") ||
+              (item.label === "Analytics" && current === "Reports");
             return (
               <button
                 key={item.path}
@@ -362,10 +443,10 @@ function Sidebar({ current, onNavigate, open, onClose }) {
         </nav>
         <div className="sidebar-bottom">
           <div className="user-row">
-            <div className="avatar">JD</div>
+            <div className="avatar">{userInitials}</div>
             <div>
-              <b>Jordan Davis</b>
-              <small>jordan@diamond.com</small>
+              <b>{userName}</b>
+              <small>{userEmail}</small>
             </div>
             <MoreHorizontal size={18} />
           </div>
@@ -388,7 +469,8 @@ function Page({ current, onNavigate }) {
   if (current === "Dealers") return <Dealers onNavigate={onNavigate} />;
   if (current === "Payments") return <Payments onNavigate={onNavigate} />;
   if (current === "Earnings") return <Earnings onNavigate={onNavigate} />;
-  if (current === "Reports") return <Reports onNavigate={onNavigate} />;
+  if (current === "Reports" || current === "Analytics")
+    return <Analytics onNavigate={onNavigate} />;
   if (current === "Settings") return <SettingsPage onNavigate={onNavigate} />;
   return <Transactions onNavigate={onNavigate} />;
 }
@@ -480,56 +562,50 @@ function Stat({ label, value, change, positive = true, icon: Icon }) {
     </div>
   );
 }
-function formatChartAmount(value) {
-  if (!value) return "\u20b90";
-  const lakhs = value / 100000;
-  const rounded = Math.round(lakhs * 10) / 10;
-  return `\u20b9${rounded}L`;
-}
-function MiniChart() {
-  const chartData = [
-    ["Apr", 2500000, 34],
-    ["May", 3600000, 48],
-    ["Jun", 3150000, 42],
-    ["Jul", 4700000, 63],
-    ["Aug", 4100000, 55],
-    ["Sep", 6570050, 88],
-    ["Oct", 5050000, 68],
-  ];
+function DynamicBarChart({ chartData, yTicks = [] }) {
+  if (!chartData || !chartData.length) return null;
+
   return (
     <div className="chart">
       <div className="chart-y">
-        {[5000000, 4000000, 3000000, 2000000, 1000000, 0].map((value) => (
-          <span key={value}>{formatChartAmount(value)}</span>
+        {yTicks.map((value, idx) => (
+          <span key={idx}>{formatChartAmount(value)}</span>
         ))}
       </div>
       <div className="chart-area bar-chart">
         <div className="grid-lines">
-          <i />
-          <i />
-          <i />
-          <i />
-          <i />
+          {yTicks.slice(0, 5).map((_, i) => (
+            <i key={i} />
+          ))}
         </div>
-        <div className="bars" aria-label="Monthly revenue bar chart">
-          {chartData.map(([month, value, height], index) => (
+        <div className="bars" aria-label="Revenue bar chart">
+          {chartData.map((item, index) => (
             <span
-              className={index === 5 ? "current" : ""}
-              style={{ height: height + "%" }}
-              title={`${month}\nRevenue\n${formatChartAmount(value)}`}
-              aria-label={`${month} Revenue ${formatChartAmount(value)}`}
-              key={month}
+              className={index === chartData.length - 1 ? "current" : ""}
+              style={{ height: `${item.heightPercent}%` }}
+              title={`${item.label}\nRevenue: ${money(item.value)}\nTransactions: ${item.transactions || 0}`}
+              aria-label={`${item.label} Revenue ${money(item.value)}`}
+              key={item.label}
             />
           ))}
         </div>
         <div className="chart-x">
-          {chartData.map(([month]) => (
-            <span key={month}>{month}</span>
+          {chartData.map((item) => (
+            <span key={item.label}>{item.label}</span>
           ))}
         </div>
       </div>
     </div>
   );
+}
+
+function MiniChart({ transactions, payments, period = "Monthly" }) {
+  const { data } = useData();
+  const trx = transactions && transactions.length ? transactions : (data?.transactions || []);
+  const pay = payments && payments.length ? payments : (data?.payments || []);
+  const analytics = calculateAnalytics(trx, pay, period);
+
+  return <DynamicBarChart chartData={analytics.chartData} yTicks={analytics.yTicks} />;
 }
 
 function Dashboard({ onNavigate }) {
@@ -2170,19 +2246,11 @@ function DesktopEarnings({ onNavigate }) {
     </>
   );
 }
-function Reports({ onNavigate }) {
+function Analytics({ onNavigate }) {
   const { data } = useData();
-  const sales = data.transactions.reduce((sum, item) => sum + item.amount, 0);
-  const pending = data.transactions
-    .filter((item) => item.status !== "Completed")
-    .reduce((sum, item) => sum + item.amount, 0);
-  const earnings = data.transactions.reduce(
-    (sum, item) => sum + (item.amount * item.brokerageRate) / 100,
-    0,
-  );
-  const completed = data.transactions.filter(
-    (item) => item.status === "Completed",
-  ).length;
+  const [period, setPeriod] = useState("Monthly");
+
+  const analytics = calculateAnalytics(data.transactions, data.payments, period);
 
   return (
     <>
@@ -2191,61 +2259,102 @@ function Reports({ onNavigate }) {
         backLabel="Back to Dashboard"
         onNavigate={onNavigate}
         eyebrow="Performance"
-        title="Reports"
+        title="Analytics"
         description="Understand your business performance across sales, activity and dealer results."
         action={
-          <Button
-            onClick={() =>
-              downloadCsv(
-                "diamond-finance-report.csv",
-                ["Metric", "Value"],
-                [
-                  ["Total revenue", money(sales)],
-                  ["Pending payments", money(pending)],
-                  ["Net earnings", money(earnings)],
-                ],
-              )
-            }
-            icon={Download}
-          >
-            Export report
-          </Button>
+          <div className="analytics-header-actions">
+            <div className="segmented-control period-control" role="radiogroup" aria-label="Analytics Period">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={period === "Weekly"}
+                className={`segmented-btn ${period === "Weekly" ? "active" : ""}`}
+                onClick={() => setPeriod("Weekly")}
+              >
+                Weekly
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={period === "Monthly"}
+                className={`segmented-btn ${period === "Monthly" ? "active" : ""}`}
+                onClick={() => setPeriod("Monthly")}
+              >
+                Monthly
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={period === "Quarterly"}
+                className={`segmented-btn ${period === "Quarterly" ? "active" : ""}`}
+                onClick={() => setPeriod("Quarterly")}
+              >
+                Quarterly
+              </button>
+            </div>
+            <Button
+              onClick={() =>
+                downloadCsv(
+                  `diamond-finance-analytics-${period.toLowerCase()}.csv`,
+                  ["Metric", "Value"],
+                  [
+                    ["Period", period],
+                    ["Revenue", money(analytics.revenue)],
+                    ["Transactions", String(analytics.transactionsCount)],
+                    ["Brokerage / Earnings", money(analytics.earnings)],
+                    ["Payments", money(analytics.paymentsTotal)],
+                  ],
+                )
+              }
+              icon={Download}
+            >
+              Export report
+            </Button>
+          </div>
         }
       />
       <div className="report-summary">
         <div className="stat">
-          <span className="stat-top">Total revenue</span>
-          <strong>{money(sales)}</strong>
+          <span className="stat-top">Total revenue ({period})</span>
+          <strong>{money(analytics.revenue)}</strong>
         </div>
         <div className="stat">
-          <span className="stat-top">Transactions</span>
-          <strong>{data.transactions.length}</strong>
+          <span className="stat-top">Transactions ({period})</span>
+          <strong>{analytics.transactionsCount}</strong>
         </div>
         <div className="stat">
-          <span className="stat-top">Average transaction</span>
-          <strong>
-            {money(sales / Math.max(data.transactions.length, 1))}
-          </strong>
+          <span className="stat-top">Brokerage / Earnings</span>
+          <strong>{money(analytics.earnings)}</strong>
         </div>
         <div className="stat">
-          <span className="stat-top">Pending payments</span>
-          <strong>{money(pending)}</strong>
+          <span className="stat-top">Payments ({period})</span>
+          <strong>{money(analytics.paymentsTotal)}</strong>
         </div>
       </div>
       <div className="report-layout">
-        <Panel title="Revenue trend" className="report-panel">
+        <Panel title={`${period} revenue trend`} className="report-panel">
           <div className="report-card-body">
-            <MiniChart />
+            {analytics.hasData ? (
+              <DynamicBarChart chartData={analytics.chartData} yTicks={analytics.yTicks} />
+            ) : (
+              <div className="empty-state" style={{ minHeight: "220px" }}>
+                <Search size={20} />
+                <b>No transactions for this period</b>
+                <span>Try selecting another timeframe or create a new transaction.</span>
+              </div>
+            )}
           </div>
         </Panel>
         <Panel title="Transaction activity" className="report-panel">
           <div className="report-activity-list">
             <div>
               <span>Completed</span>
-              <strong>{completed}</strong>
+              <strong>
+                {data.transactions.filter((item) => item.status === "Completed").length}
+              </strong>
               <small>
                 {data.transactions.length
-                  ? Math.round((completed / data.transactions.length) * 100)
+                  ? Math.round((data.transactions.filter((item) => item.status === "Completed").length / data.transactions.length) * 100)
                   : 0}
                 % of all transactions
               </small>
@@ -2258,7 +2367,13 @@ function Reports({ onNavigate }) {
                     .length
                 }
               </strong>
-              <small>{money(pending)}</small>
+              <small>
+                {money(
+                  data.transactions
+                    .filter((item) => item.status === "Pending")
+                    .reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0)
+                )}
+              </small>
             </div>
             <div>
               <span>Processing</span>
@@ -2279,9 +2394,10 @@ function Reports({ onNavigate }) {
         >
           <div className="dealer-rankings">
             {data.dealers.map((dealer, index) => {
-              const volume = data.transactions
-                .filter((item) => item.dealerId === dealer.id)
-                .reduce((sum, item) => sum + item.amount, 0);
+              const records = data.transactions.filter(
+                (item) => item.dealerId === dealer.id || item.sellerId === dealer.id
+              );
+              const volume = records.reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0);
               return (
                 <div className="dealer-rank-row" key={dealer.id}>
                   <div className="dealer-rank-badge">#{index + 1}</div>
@@ -2292,11 +2408,7 @@ function Reports({ onNavigate }) {
                   <div className="dealer-rank-value">
                     <b>{money(volume)}</b>
                     <span>
-                      {
-                        data.transactions.filter(
-                          (item) => item.dealerId === dealer.id,
-                        ).length
-                      }{" "}
+                      {records.length}{" "}
                       transactions
                     </span>
                   </div>
@@ -2744,6 +2856,131 @@ function SettingsPage({ onNavigate }) {
         </section>
       </div>
     </>
+  );
+}
+
+function LoginPage({ onLoginSuccess }) {
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (!email.trim() || !password.trim()) {
+      return setError("Please enter your email and password.");
+    }
+    setLoading(true);
+    try {
+      if (isSignUp) {
+        const res = await authSignUp(email.trim(), password, fullName.trim() || "Jordan Davis");
+        onLoginSuccess(res?.user || { email: email.trim(), user_metadata: { full_name: fullName.trim() || "Jordan Davis" } });
+      } else {
+        const res = await authSignIn(email.trim(), password);
+        onLoginSuccess(res?.user || { email: email.trim(), user_metadata: { full_name: "Jordan Davis" } });
+      }
+    } catch (err) {
+      setError(err?.message || "Failed to authenticate. Please check your credentials.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDemoLogin = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await authSignIn("jordan@diamond.com", "diamond123456");
+      onLoginSuccess(res?.user || { email: "jordan@diamond.com", user_metadata: { full_name: "Jordan Davis" } });
+    } catch {
+      onLoginSuccess({ email: "jordan@diamond.com", user_metadata: { full_name: "Jordan Davis" } });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="login-shell">
+      <div className="login-card">
+        <div className="login-head">
+          <div className="login-brand">
+            <div className="brand-mark">
+              <Gem size={18} />
+            </div>
+            <span>Diamond Finance</span>
+          </div>
+          <h1>{isSignUp ? "Create your workspace" : "Welcome back"}</h1>
+          <p>{isSignUp ? "Sign up to manage diamond transactions and dealers." : "Sign in to access your diamond finance workspace."}</p>
+        </div>
+
+        {error && <div className="form-error">{error}</div>}
+
+        <form className="login-form" onSubmit={handleSubmit}>
+          {isSignUp && (
+            <label className="field-group">
+              <span className="field-title">Full Name</span>
+              <input
+                type="text"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="e.g. Jordan Davis"
+                required
+              />
+            </label>
+          )}
+
+          <label className="field-group">
+            <span className="field-title">Email address</span>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="e.g. jordan@diamond.com"
+              required
+            />
+          </label>
+
+          <label className="field-group">
+            <span className="field-title">Password</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              required
+            />
+          </label>
+
+          <Button type="submit" disabled={loading}>
+            {loading ? "Processing..." : isSignUp ? "Create Account" : "Sign in"}
+          </Button>
+        </form>
+
+        <button type="button" className="demo-btn" onClick={handleDemoLogin} disabled={loading}>
+          ✨ Quick Sign In with Demo Account
+        </button>
+
+        <div className="login-footer">
+          <button
+            type="button"
+            className="login-toggle"
+            onClick={() => {
+              setIsSignUp(!isSignUp);
+              setError("");
+            }}
+          >
+            {isSignUp ? (
+              <span>Already have an account? <b>Sign in</b></span>
+            ) : (
+              <span>Don't have an account? <b>Sign up</b></span>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
