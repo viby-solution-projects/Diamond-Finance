@@ -163,6 +163,22 @@ CREATE INDEX IF NOT EXISTS idx_profiles_role ON public.profiles(role);
 CREATE INDEX IF NOT EXISTS idx_profiles_status ON public.profiles(status);
 
 -- ==============================================================================
+-- TABLE PRIVILEGES & SECURITY GRANTS
+-- ==============================================================================
+-- Ensure authenticated users have table access (governed strictly by RLS above)
+GRANT USAGE ON SCHEMA public TO authenticated;
+GRANT ALL ON TABLE public.profiles TO authenticated;
+GRANT ALL ON TABLE public.dealers TO authenticated;
+GRANT ALL ON TABLE public.transactions TO authenticated;
+GRANT ALL ON TABLE public.payments TO authenticated;
+
+-- Explicitly revoke sensitive finance table access from anon role
+REVOKE ALL ON TABLE public.dealers FROM anon;
+REVOKE ALL ON TABLE public.transactions FROM anon;
+REVOKE ALL ON TABLE public.payments FROM anon;
+REVOKE ALL ON TABLE public.profiles FROM anon;
+
+-- ==============================================================================
 -- DESIGNATE FIRST SUPER ADMIN (RUN IN SUPABASE SQL EDITOR)
 -- ==============================================================================
 -- To set your existing Supabase auth account as the one Super Admin, execute:

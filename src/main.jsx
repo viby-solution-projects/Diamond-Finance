@@ -112,12 +112,13 @@ function App() {
   const [current, setCurrent] = useState(routeName());
   const [drawer, setDrawer] = useState(false);
   const [menu, setMenu] = useState(null);
-  const [data, setData] = useState(() => localRepository().load());
+  const [data, setData] = useState({ transactions: [], dealers: [], payments: [] });
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [dataError, setDataError] = useState("");
 
-  const repository = localRepository();
   const supabaseRepo = supabaseRepository();
 
   useEffect(() => {
@@ -147,6 +148,7 @@ function App() {
         if (event === "SIGNED_OUT" || !session?.user) {
           setUser(null);
           setProfile(null);
+          setData({ transactions: [], dealers: [], payments: [] });
           if (window.location.pathname !== "/login") {
             navigate("/login");
           }
@@ -161,19 +163,42 @@ function App() {
       authSubscription = subscription;
     }
 
-    supabaseRepo.loadAll().then((remoteData) => {
-      if (remoteData) setData(remoteData);
-    });
-
     return () => {
       if (authSubscription) authSubscription.unsubscribe();
     };
   }, []);
 
+  const loadData = async () => {
+    if (!user) return;
+    setDataLoading(true);
+    setDataError("");
+    try {
+      const remoteData = await supabaseRepo.loadAll();
+      if (remoteData) {
+        setData(remoteData);
+      }
+    } catch (err) {
+      console.error("Data load failed:", err);
+      setDataError(err?.message || "Unable to load finance data. Please try again.");
+    } finally {
+      setDataLoading(false);
+    }
+  };
+
+  // Only load finance data when an authenticated user session is active
+  useEffect(() => {
+    if (user?.id) {
+      loadData();
+    } else {
+      setData({ transactions: [], dealers: [], payments: [] });
+    }
+  }, [user?.id]);
+
   const handleLogout = async () => {
     await authSignOut();
     setUser(null);
     setProfile(null);
+    setData({ transactions: [], dealers: [], payments: [] });
     setMenu(null);
     navigate("/login");
   };
@@ -184,27 +209,33 @@ function App() {
     navigate("/");
   };
 
-  const updateData = (updater) =>
-    setData((previous) => {
-      const next = updater(previous);
-      repository.save(next);
-      return next;
-    });
-  const addTransaction = (transaction) => {
-    updateData((previous) => ({
-      ...previous,
-      transactions: [...previous.transactions, transaction],
-    }));
-    supabaseRepo.insertTransaction(transaction);
+  const addTransaction = async (transaction) => {
+    try {
+      await supabaseRepo.insertTransaction(transaction);
+      setData((prev) => ({
+        ...prev,
+        transactions: [transaction, ...prev.transactions],
+      }));
+    } catch (err) {
+      console.error("addTransaction error:", err);
+      alert(err.message || "Failed to create transaction.");
+    }
   };
-  const addPayment = (payment) => {
-    updateData((previous) => ({
-      ...previous,
-      payments: [...previous.payments, payment],
-    }));
-    supabaseRepo.insertPayment(payment);
+
+  const addPayment = async (payment) => {
+    try {
+      await supabaseRepo.insertPayment(payment);
+      setData((prev) => ({
+        ...prev,
+        payments: [payment, ...prev.payments],
+      }));
+    } catch (err) {
+      console.error("addPayment error:", err);
+      alert(err.message || "Failed to record payment.");
+    }
   };
-  const addDealer = (dealer) => {
+
+  const addDealer = async (dealer) => {
     const id = nextId("dealer", data.dealers);
     const item = {
       id,
@@ -216,14 +247,21 @@ function App() {
       contact: (dealer.contact || dealer.name).trim(),
       status: dealer.status || "Active",
     };
-    updateData((previous) => ({
-      ...previous,
-      dealers: [...previous.dealers, item],
-    }));
-    supabaseRepo.insertDealer(item);
-    return item;
+    try {
+      await supabaseRepo.insertDealer(item);
+      setData((prev) => ({
+        ...prev,
+        dealers: [...prev.dealers, item],
+      }));
+      return item;
+    } catch (err) {
+      console.error("addDealer error:", err);
+      alert(err.message || "Failed to add dealer.");
+      throw err;
+    }
   };
-  const updateDealer = (id, updated) => {
+
+  const updateDealer = async (id, updated) => {
     const cleanUpdated = {
       ...updated,
       name: updated.name !== undefined ? updated.name.trim() : undefined,
@@ -234,20 +272,22 @@ function App() {
       contact: updated.contact !== undefined ? updated.contact.trim() : (updated.name ? updated.name.trim() : undefined),
       status: updated.status,
     };
-    updateData((previous) => ({
-      ...previous,
-      dealers: previous.dealers.map((d) =>
-        d.id === id
-          ? {
-              ...d,
-              ...cleanUpdated,
-            }
-          : d
-      ),
-    }));
-    supabaseRepo.updateDealer(id, cleanUpdated);
+    try {
+      await supabaseRepo.updateDealer(id, cleanUpdated);
+      setData((prev) => ({
+        ...prev,
+        dealers: prev.dealers.map((d) =>
+          d.id === id ? { ...d, ...cleanUpdated } : d
+        ),
+      }));
+    } catch (err) {
+      console.error("updateDealer error:", err);
+      alert(err.message || "Failed to update dealer.");
+      throw err;
+    }
   };
-  const deleteDealer = (id) => {
+
+  const deleteDealer = async (id) => {
     const isUsed =
       data.transactions.some(
         (t) => t.dealerId === id || t.sellerId === id || t.buyerId === id
@@ -259,12 +299,17 @@ function App() {
         reason: "This dealer is used in an existing transaction.",
       };
     }
-    updateData((previous) => ({
-      ...previous,
-      dealers: previous.dealers.filter((d) => d.id !== id),
-    }));
-    supabaseRepo.deleteDealer(id);
-    return { success: true };
+    try {
+      await supabaseRepo.deleteDealer(id);
+      setData((prev) => ({
+        ...prev,
+        dealers: prev.dealers.filter((d) => d.id !== id),
+      }));
+      return { success: true };
+    } catch (err) {
+      console.error("deleteDealer error:", err);
+      return { success: false, reason: err.message || "Failed to delete dealer." };
+    }
   };
   React.useEffect(() => {
     const escape = (event) => {
@@ -339,7 +384,9 @@ function App() {
         addDealer,
         updateDealer,
         deleteDealer,
-        updateData,
+        dataLoading,
+        dataError,
+        refreshData: loadData,
       }}
     >
       <div className="app-shell">
@@ -450,6 +497,22 @@ function App() {
               "content page-" + current.toLowerCase().replaceAll(" ", "-")
             }
           >
+            {dataError && (
+              <div className="login-error-banner" style={{ marginBottom: "18px", justifyContent: "space-between" }} role="alert">
+                <div style={{ display: "flex", alignItems: "center", gap: "9px" }}>
+                  <AlertCircle size={16} />
+                  <span>{dataError}</span>
+                </div>
+                <button
+                  type="button"
+                  className="button"
+                  style={{ height: "30px", fontSize: "11.5px", padding: "0 10px" }}
+                  onClick={loadData}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
             <Page current={current} onNavigate={go} />
           </div>
         </main>

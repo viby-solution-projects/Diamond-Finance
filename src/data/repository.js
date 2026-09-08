@@ -108,234 +108,170 @@ export function localRepository() {
   };
 }
 
-// Supabase Async Repository with Real-time & Offline Synchronization
+// Supabase Async Repository for Authenticated Finance Operations
 export function supabaseRepository() {
-  const local = localRepository();
-
   return {
     async loadAll() {
       if (!isSupabaseConfigured || !supabase) {
-        return local.load();
+        throw new Error('Supabase database is not configured.');
       }
 
-      try {
-        const [dealersRes, transactionsRes, paymentsRes] = await Promise.all([
-          supabase.from('dealers').select('*'),
-          supabase.from('transactions').select('*').order('date', { ascending: false }),
-          supabase.from('payments').select('*').order('date', { ascending: false }),
-        ]);
+      const [dealersRes, transactionsRes, paymentsRes] = await Promise.all([
+        supabase.from('dealers').select('*'),
+        supabase.from('transactions').select('*').order('date', { ascending: false }),
+        supabase.from('payments').select('*').order('date', { ascending: false }),
+      ]);
 
-        if (dealersRes.error || transactionsRes.error || paymentsRes.error) {
-          console.warn('Supabase fetch error, using local fallback:', dealersRes.error || transactionsRes.error || paymentsRes.error);
-          return local.load();
-        }
-
-        const mapDealerFromDb = (d) => ({
-          id: d.id,
-          name: d.name,
-          location: d.location,
-          contact: d.contact || d.name,
-          email: d.email || '',
-          phone: d.phone || '',
-          status: d.status || 'Active',
-          type: (d.type || 'both').toLowerCase(),
-        });
-
-        const mapTrxFromDb = (t) => ({
-          id: t.id,
-          name: t.name,
-          dealerId: t.dealer_id || t.seller_id,
-          sellerId: t.seller_id || t.dealer_id,
-          buyerId: t.buyer_id,
-          date: t.date,
-          diamondCarat: Number(t.diamond_carat) || 0,
-          perCaratRate: Number(t.per_carat_rate) || 0,
-          totalRate: Number(t.total_rate) || Number(t.amount) || 0,
-          amount: Number(t.amount) || Number(t.total_rate) || 0,
-          terms: Number(t.terms) || 0,
-          dueDays: Number(t.due_days) || 0,
-          sellType: t.sell_type || 'Self',
-          otherSellType: t.other_sell_type || '',
-          brokerageRate: Number(t.brokerage_rate) || 5,
-          brokerageEarned: Number(t.brokerage_earned) || 0,
-          status: t.status || 'Pending',
-          paymentMethod: t.payment_method || 'Bank transfer',
-          notes: t.notes || '',
-        });
-
-        const mapPayFromDb = (p) => ({
-          id: p.id,
-          transactionId: p.transaction_id,
-          dealerId: p.dealer_id,
-          date: p.date,
-          amount: Number(p.amount) || 0,
-          method: p.method || 'Bank transfer',
-          status: p.status || 'Completed',
-        });
-
-        const remoteData = {
-          dealers: (dealersRes.data || []).map(mapDealerFromDb),
-          transactions: (transactionsRes.data || []).map(mapTrxFromDb),
-          payments: (paymentsRes.data || []).map(mapPayFromDb),
-        };
-
-        // If remote database is newly initialized and empty, seed it
-        if (!remoteData.dealers.length && !remoteData.transactions.length) {
-          const initial = local.load();
-          await Promise.all([
-            ...initial.dealers.map(d => supabase.from('dealers').upsert({
-              id: d.id,
-              name: d.name,
-              location: d.location,
-              type: d.type || 'both',
-              contact: d.contact,
-              email: d.email,
-              phone: d.phone,
-              status: d.status,
-            })),
-            ...initial.transactions.map(t => supabase.from('transactions').upsert({
-              id: t.id,
-              name: t.name,
-              dealer_id: t.dealerId,
-              seller_id: t.sellerId,
-              buyer_id: t.buyerId,
-              date: t.date,
-              diamond_carat: t.diamondCarat,
-              per_carat_rate: t.perCaratRate,
-              total_rate: t.totalRate,
-              amount: t.amount,
-              terms: t.terms,
-              due_days: t.dueDays,
-              sell_type: t.sellType,
-              other_sell_type: t.otherSellType,
-              brokerage_rate: t.brokerageRate,
-              brokerage_earned: t.brokerageEarned,
-              status: t.status,
-              payment_method: t.paymentMethod,
-              notes: t.notes,
-            })),
-            ...initial.payments.map(p => supabase.from('payments').upsert({
-              id: p.id,
-              transaction_id: p.transactionId,
-              dealer_id: p.dealerId,
-              date: p.date,
-              amount: p.amount,
-              method: p.method,
-              status: p.status,
-            })),
-          ]);
-          return initial;
-        }
-
-        local.save(remoteData);
-        return remoteData;
-      } catch (err) {
-        console.error('Error connecting to Supabase:', err);
-        return local.load();
+      if (dealersRes.error) {
+        console.error('Supabase fetch dealers error:', dealersRes.error);
+        throw new Error('Unable to load finance data. Please check your connection or database permissions.');
       }
+      if (transactionsRes.error) {
+        console.error('Supabase fetch transactions error:', transactionsRes.error);
+        throw new Error('Unable to load finance data. Please check your connection or database permissions.');
+      }
+      if (paymentsRes.error) {
+        console.error('Supabase fetch payments error:', paymentsRes.error);
+        throw new Error('Unable to load finance data. Please check your connection or database permissions.');
+      }
+
+      const mapDealerFromDb = (d) => ({
+        id: d.id,
+        name: d.name,
+        location: d.location,
+        contact: d.contact || d.name,
+        email: d.email || '',
+        phone: d.phone || '',
+        status: d.status || 'Active',
+        type: (d.type || 'both').toLowerCase(),
+      });
+
+      const mapTrxFromDb = (t) => ({
+        id: t.id,
+        name: t.name,
+        dealerId: t.dealer_id || t.seller_id,
+        sellerId: t.seller_id || t.dealer_id,
+        buyerId: t.buyer_id,
+        date: t.date,
+        diamondCarat: Number(t.diamond_carat) || 0,
+        perCaratRate: Number(t.per_carat_rate) || 0,
+        totalRate: Number(t.total_rate) || Number(t.amount) || 0,
+        amount: Number(t.amount) || Number(t.total_rate) || 0,
+        terms: Number(t.terms) || 0,
+        dueDays: Number(t.due_days) || 0,
+        sellType: t.sell_type || 'Self',
+        otherSellType: t.other_sell_type || '',
+        brokerageRate: Number(t.brokerage_rate) || 5,
+        brokerageEarned: Number(t.brokerage_earned) || 0,
+        status: t.status || 'Pending',
+        paymentMethod: t.payment_method || 'Bank transfer',
+        notes: t.notes || '',
+      });
+
+      const mapPayFromDb = (p) => ({
+        id: p.id,
+        transactionId: p.transaction_id,
+        dealerId: p.dealer_id,
+        date: p.date,
+        amount: Number(p.amount) || 0,
+        method: p.method || 'Bank transfer',
+        status: p.status || 'Completed',
+      });
+
+      return {
+        dealers: (dealersRes.data || []).map(mapDealerFromDb),
+        transactions: (transactionsRes.data || []).map(mapTrxFromDb),
+        payments: (paymentsRes.data || []).map(mapPayFromDb),
+      };
     },
 
     async insertDealer(dealer) {
-      local.save({ ...local.load(), dealers: [...local.load().dealers, dealer] });
-      if (isSupabaseConfigured && supabase) {
-        try {
-          await supabase.from('dealers').insert({
-            id: dealer.id,
-            name: dealer.name,
-            location: dealer.location,
-            type: dealer.type || 'both',
-            contact: dealer.contact,
-            email: dealer.email,
-            phone: dealer.phone,
-            status: dealer.status,
-          });
-        } catch (e) {
-          console.error('Supabase insertDealer error:', e);
-        }
+      if (!isSupabaseConfigured || !supabase) return;
+      const { error } = await supabase.from('dealers').insert({
+        id: dealer.id,
+        name: dealer.name,
+        location: dealer.location,
+        type: dealer.type || 'both',
+        contact: dealer.contact,
+        email: dealer.email,
+        phone: dealer.phone,
+        status: dealer.status,
+      });
+      if (error) {
+        console.error('Supabase insertDealer error:', error);
+        throw new Error('Unable to create dealer. Please try again.');
       }
     },
 
     async updateDealer(id, updated) {
-      const data = local.load();
-      data.dealers = data.dealers.map(d => d.id === id ? { ...d, ...updated } : d);
-      local.save(data);
-      if (isSupabaseConfigured && supabase) {
-        try {
-          await supabase.from('dealers').update({
-            name: updated.name,
-            location: updated.location,
-            type: updated.type,
-            contact: updated.contact,
-            email: updated.email,
-            phone: updated.phone,
-            status: updated.status,
-          }).eq('id', id);
-        } catch (e) {
-          console.error('Supabase updateDealer error:', e);
-        }
+      if (!isSupabaseConfigured || !supabase) return;
+      const { error } = await supabase.from('dealers').update({
+        name: updated.name,
+        location: updated.location,
+        type: updated.type,
+        contact: updated.contact,
+        email: updated.email,
+        phone: updated.phone,
+        status: updated.status,
+      }).eq('id', id);
+      if (error) {
+        console.error('Supabase updateDealer error:', error);
+        throw new Error('Unable to update dealer. Please try again.');
       }
     },
 
     async deleteDealer(id) {
-      const data = local.load();
-      data.dealers = data.dealers.filter(d => d.id !== id);
-      local.save(data);
-      if (isSupabaseConfigured && supabase) {
-        try {
-          await supabase.from('dealers').delete().eq('id', id);
-        } catch (e) {
-          console.error('Supabase deleteDealer error:', e);
-        }
+      if (!isSupabaseConfigured || !supabase) return;
+      const { error } = await supabase.from('dealers').delete().eq('id', id);
+      if (error) {
+        console.error('Supabase deleteDealer error:', error);
+        throw new Error('Unable to delete dealer. Please try again.');
       }
     },
 
     async insertTransaction(trx) {
-      local.save({ ...local.load(), transactions: [...local.load().transactions, trx] });
-      if (isSupabaseConfigured && supabase) {
-        try {
-          await supabase.from('transactions').insert({
-            id: trx.id,
-            name: trx.name,
-            dealer_id: trx.dealerId || trx.sellerId,
-            seller_id: trx.sellerId || trx.dealerId,
-            buyer_id: trx.buyerId,
-            date: trx.date,
-            diamond_carat: trx.diamondCarat,
-            per_carat_rate: trx.perCaratRate,
-            total_rate: trx.totalRate,
-            amount: trx.amount || trx.totalRate,
-            terms: trx.terms,
-            due_days: trx.dueDays,
-            sell_type: trx.sellType,
-            other_sell_type: trx.otherSellType,
-            brokerage_rate: trx.brokerageRate,
-            brokerage_earned: trx.brokerageEarned,
-            status: trx.status,
-            payment_method: trx.paymentMethod,
-            notes: trx.notes,
-          });
-        } catch (e) {
-          console.error('Supabase insertTransaction error:', e);
-        }
+      if (!isSupabaseConfigured || !supabase) return;
+      const { error } = await supabase.from('transactions').insert({
+        id: trx.id,
+        name: trx.name,
+        dealer_id: trx.dealerId || trx.sellerId,
+        seller_id: trx.sellerId || trx.dealerId,
+        buyer_id: trx.buyerId,
+        date: trx.date,
+        diamond_carat: trx.diamondCarat,
+        per_carat_rate: trx.perCaratRate,
+        total_rate: trx.totalRate,
+        amount: trx.amount || trx.totalRate,
+        terms: trx.terms,
+        due_days: trx.dueDays,
+        sell_type: trx.sellType,
+        other_sell_type: trx.otherSellType,
+        brokerage_rate: trx.brokerageRate,
+        brokerage_earned: trx.brokerageEarned,
+        status: trx.status,
+        payment_method: trx.paymentMethod,
+        notes: trx.notes,
+      });
+      if (error) {
+        console.error('Supabase insertTransaction error:', error);
+        throw new Error('Unable to create transaction. Please try again.');
       }
     },
 
     async insertPayment(payment) {
-      local.save({ ...local.load(), payments: [...local.load().payments, payment] });
-      if (isSupabaseConfigured && supabase) {
-        try {
-          await supabase.from('payments').insert({
-            id: payment.id,
-            transaction_id: payment.transactionId,
-            dealer_id: payment.dealerId,
-            date: payment.date,
-            amount: payment.amount,
-            method: payment.method,
-            status: payment.status,
-          });
-        } catch (e) {
-          console.error('Supabase insertPayment error:', e);
-        }
+      if (!isSupabaseConfigured || !supabase) return;
+      const { error } = await supabase.from('payments').insert({
+        id: payment.id,
+        transaction_id: payment.transactionId,
+        dealer_id: payment.dealerId,
+        date: payment.date,
+        amount: payment.amount,
+        method: payment.method,
+        status: payment.status,
+      });
+      if (error) {
+        console.error('Supabase insertPayment error:', error);
+        throw new Error('Unable to record payment. Please try again.');
       }
     },
   };
