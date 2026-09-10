@@ -1409,6 +1409,12 @@ td b {
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+  .report-summary,
+  .payment-summary,
+  .bookkeeping-summary,
+  .daily-finance-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .profile-name {
     display: none;
   }
@@ -1469,11 +1475,18 @@ td b {
     margin-bottom: 10px;
   }
   .page-header h1 {
-    font-size: 23px;
+    font-size: 28px;
     line-height: 1.2;
   }
   .page-header p {
+    font-size: 15px;
     line-height: 1.45;
+  }
+  .button {
+    min-height: 48px;
+    height: 48px;
+    font-size: 15px;
+    border-radius: 9px;
   }
   .page-header .button,
   .page-header .btn,
@@ -1483,6 +1496,13 @@ td b {
     width: 100%;
     min-height: 44px;
   }
+  .page-header > :last-child {
+    width: 100%;
+    min-width: 0;
+  }
+  .page-header > :last-child .segmented-control {
+    width: 100%;
+  }
   .panel-actions {
     width: 100%;
     align-items: stretch;
@@ -1491,11 +1511,8 @@ td b {
     min-height: 44px;
   }
   .settings-field-grid,
-  .report-summary,
   .report-layout,
-  .detail-layout,
-  .payment-summary,
-  .bookkeeping-summary {
+  .detail-layout {
     grid-template-columns: 1fr;
   }
   .detail-grid {
@@ -1564,18 +1581,18 @@ td b {
     flex: 1;
   }
   .mobile-card-copy b {
-    font-size: 14px;
+    font-size: 16px;
     line-height: 1.35;
     color: var(--ink);
   }
   .mobile-card-copy span {
-    font-size: 11px;
+    font-size: 13px;
     color: var(--muted);
   }
   .mobile-card-amount {
     font-family: Manrope, sans-serif;
     font-weight: 800;
-    font-size: 17px;
+    font-size: 18px;
     color: var(--ink);
     text-align: right;
   }
@@ -1587,6 +1604,12 @@ td b {
   }
   .stats-grid, .stats-grid.three, .daily-finance-summary {
     grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .report-summary,
+  .payment-summary,
+  .bookkeeping-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
   }
   .dashboard-grid {
@@ -1648,6 +1671,24 @@ td b {
     width: 100%;
     min-height: 46px;
     justify-content: center;
+  }
+  .empty-state {
+    min-height: 120px;
+    padding: 20px 16px;
+  }
+  .pagination {
+    padding: 12px 0;
+    gap: 8px;
+  }
+  .pagination > span {
+    min-width: 0;
+    font-size: 11px;
+  }
+  .pagination .icon-btn,
+  .pagination .page-current {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
   }
   .page-header {
     flex-direction: column;
@@ -2280,6 +2321,47 @@ td b {
 
 .btn-action-primary:hover {
   filter: brightness(1.08);
+}
+
+/* Final responsive constraints for components declared later in this file. */
+@media (max-width: 767px) {
+  .report-summary,
+  .payment-summary,
+  .bookkeeping-summary,
+  .daily-finance-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .report-layout,
+  .detail-layout,
+  .settings-field-grid {
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+  }
+
+  .report-summary > *,
+  .payment-summary > *,
+  .bookkeeping-summary > *,
+  .daily-finance-summary > *,
+  .report-layout > *,
+  .detail-layout > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .report-panel,
+  .report-card-body,
+  .report-activity-list,
+  .dealer-rankings {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .report-summary .stat > strong {
+    overflow-wrap: anywhere;
+  }
 }
 
 .link-btn-subtle {
