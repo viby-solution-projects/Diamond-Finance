@@ -14,6 +14,10 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+ALTER TABLE public.profiles
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE
+    DEFAULT timezone('utc'::text, now()) NOT NULL;
+
 -- Helper function to check if the current authenticated user is active Super Admin
 CREATE OR REPLACE FUNCTION public.is_super_admin()
 RETURNS BOOLEAN AS $$
