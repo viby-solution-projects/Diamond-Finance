@@ -3746,6 +3746,15 @@ function Bookkeeping({ onNavigate }) {
   };
   const setField = (event) => setForm((previous) => ({ ...previous, [event.target.name]: event.target.value }));
 
+  useEffect(() => {
+    if (!formOpen || typeof window === "undefined" || !window.matchMedia("(max-width: 767px)").matches) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [formOpen]);
+
   return (
     <>
       <PageHeader
@@ -3755,7 +3764,7 @@ function Bookkeeping({ onNavigate }) {
         eyebrow="Finance"
         title="Bookkeeping"
         description="Keep a simple record of money coming in and going out."
-        action={<Button onClick={() => { resetForm(); setFormOpen(true); }}>Add entry</Button>}
+        action={<Button onClick={() => { resetForm(); setFormOpen(true); }}>Add Entry</Button>}
       />
       <div className="bookkeeping-summary">
         <div className="stat"><span className="stat-top">Total income</span><strong>{money(totalIncome)}</strong></div>
@@ -3764,7 +3773,7 @@ function Bookkeeping({ onNavigate }) {
       </div>
       {formOpen && (
         <form className="panel bookkeeping-form" onSubmit={submit}>
-          <div className="panel-head"><h2>{editing ? "Edit entry" : "Add entry"}</h2><button type="button" className="icon-btn" onClick={resetForm} aria-label="Close entry form"><X size={17} /></button></div>
+          <div className="panel-head bookkeeping-form-head"><button type="button" className="bookkeeping-back" onClick={resetForm}><ChevronLeft size={16} /> Back</button><h2>{editing ? "Edit bookkeeping entry" : "Add bookkeeping entry"}</h2><button type="button" className="icon-btn bookkeeping-close" onClick={resetForm} aria-label="Close entry form"><X size={17} /></button></div>
           <div className="form-grid">
             <label className="field-group"><span className="field-title">Entry Type</span><select name="entryType" value={form.entryType} onChange={changeEntryType}><option>Income</option><option>Expense</option></select></label>
             <label className="field-group"><span className="field-title">Date</span><input name="date" type="date" value={form.date} onChange={setField} required /></label>
