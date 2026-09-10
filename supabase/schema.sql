@@ -1,5 +1,5 @@
 -- ==============================================================================
--- DIAMOND FINANCE PRODUCTION DATABASE SCHEMA (SUPABASE POSTGRESQL)
+-- DIAMOND FINANCE PRODUCTION DATABASE SCHEMA & MIGRATION (SUPABASE POSTGRESQL)
 -- ==============================================================================
 
 -- 1. Create Profiles Table (Linked to Supabase Auth)
@@ -23,7 +23,7 @@ BEGIN
     WHERE id = auth.uid() AND role = 'super_admin' AND status = 'active'
   );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Trigger to create a profile automatically when a user signs up/is created via Supabase Auth
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -41,7 +41,7 @@ BEGIN
   SET email = EXCLUDED.email;
   RETURN new;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
@@ -98,60 +98,6 @@ CREATE TABLE IF NOT EXISTS public.payments (
 );
 
 -- ==============================================================================
--- ROW LEVEL SECURITY (RLS) POLICIES
--- ==============================================================================
-
--- Enable RLS on every application data table
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.dealers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
-
--- Profiles: Authenticated users can read their own profile; Super Admin can read all profiles.
-DROP POLICY IF EXISTS "Allow authenticated read profiles" ON public.profiles;
-DROP POLICY IF EXISTS "Allow authenticated update profiles" ON public.profiles;
-DROP POLICY IF EXISTS "Allow read profiles" ON public.profiles;
-DROP POLICY IF EXISTS "Allow update profiles" ON public.profiles;
-
-CREATE POLICY "Allow read profiles" ON public.profiles
-    FOR SELECT TO authenticated 
-    USING (auth.uid() = id OR public.is_super_admin());
-
-CREATE POLICY "Allow update profiles" ON public.profiles
-    FOR UPDATE TO authenticated 
-    USING (auth.uid() = id OR public.is_super_admin());
-
--- Dealers
-CREATE POLICY "Allow authenticated read dealers" ON public.dealers
-    FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Allow authenticated insert dealers" ON public.dealers
-    FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "Allow authenticated update dealers" ON public.dealers
-    FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "Allow authenticated delete dealers" ON public.dealers
-    FOR DELETE TO authenticated USING (true);
-
--- Transactions
-CREATE POLICY "Allow authenticated read transactions" ON public.transactions
-    FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Allow authenticated insert transactions" ON public.transactions
-    FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "Allow authenticated update transactions" ON public.transactions
-    FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "Allow authenticated delete transactions" ON public.transactions
-    FOR DELETE TO authenticated USING (true);
-
--- Payments
-CREATE POLICY "Allow authenticated read payments" ON public.payments
-    FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Allow authenticated insert payments" ON public.payments
-    FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "Allow authenticated update payments" ON public.payments
-    FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "Allow authenticated delete payments" ON public.payments
-    FOR DELETE TO authenticated USING (true);
-
--- ==============================================================================
 -- INDEXES FOR OPTIMAL QUERY & ANALYTICS PERFORMANCE
 -- ==============================================================================
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON public.transactions(date);
@@ -165,23 +111,152 @@ CREATE INDEX IF NOT EXISTS idx_profiles_status ON public.profiles(status);
 -- ==============================================================================
 -- TABLE PRIVILEGES & SECURITY GRANTS
 -- ==============================================================================
--- Ensure authenticated users have table access (governed strictly by RLS above)
-GRANT USAGE ON SCHEMA public TO authenticated;
-GRANT ALL ON TABLE public.profiles TO authenticated;
-GRANT ALL ON TABLE public.dealers TO authenticated;
-GRANT ALL ON TABLE public.transactions TO authenticated;
-GRANT ALL ON TABLE public.payments TO authenticated;
+-- Grant schema usage to authenticated and service_role
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 
--- Explicitly revoke sensitive finance table access from anon role
+-- Ensure table privileges exist for authenticated role
+GRANT ALL ON TABLE public.profiles TO authenticated, service_role;
+GRANT ALL ON TABLE public.dealers TO authenticated, service_role;
+GRANT ALL ON TABLE public.transactions TO authenticated, service_role;
+GRANT ALL ON TABLE public.payments TO authenticated, service_role;
+
+GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated, service_role;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO authenticated, service_role;
+
+-- Future tables default privileges
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON ROUTINES TO authenticated, service_role;
+
+-- Explicitly revoke sensitive finance table direct access from unauthenticated anon role
 REVOKE ALL ON TABLE public.dealers FROM anon;
 REVOKE ALL ON TABLE public.transactions FROM anon;
 REVOKE ALL ON TABLE public.payments FROM anon;
 REVOKE ALL ON TABLE public.profiles FROM anon;
 
 -- ==============================================================================
--- DESIGNATE EXISTING AUTH USER AS SUPER ADMIN
+-- ROW LEVEL SECURITY (RLS) POLICIES
 -- ==============================================================================
--- Automatically sync any existing user from auth.users into profiles as super_admin:
+
+-- Enable RLS on every table
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.dealers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
+
+-- Drop prior policies to avoid conflicts upon re-execution
+DROP POLICY IF EXISTS "profiles_select_policy" ON public.profiles;
+DROP POLICY IF EXISTS "profiles_insert_policy" ON public.profiles;
+DROP POLICY IF EXISTS "profiles_update_policy" ON public.profiles;
+DROP POLICY IF EXISTS "profiles_delete_policy" ON public.profiles;
+DROP POLICY IF EXISTS "Allow read profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Allow update profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Allow authenticated read profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Allow authenticated update profiles" ON public.profiles;
+
+DROP POLICY IF EXISTS "dealers_select_policy" ON public.dealers;
+DROP POLICY IF EXISTS "dealers_insert_policy" ON public.dealers;
+DROP POLICY IF EXISTS "dealers_update_policy" ON public.dealers;
+DROP POLICY IF EXISTS "dealers_delete_policy" ON public.dealers;
+DROP POLICY IF EXISTS "Allow authenticated read dealers" ON public.dealers;
+DROP POLICY IF EXISTS "Allow authenticated insert dealers" ON public.dealers;
+DROP POLICY IF EXISTS "Allow authenticated update dealers" ON public.dealers;
+DROP POLICY IF EXISTS "Allow authenticated delete dealers" ON public.dealers;
+
+DROP POLICY IF EXISTS "transactions_select_policy" ON public.transactions;
+DROP POLICY IF EXISTS "transactions_insert_policy" ON public.transactions;
+DROP POLICY IF EXISTS "transactions_update_policy" ON public.transactions;
+DROP POLICY IF EXISTS "transactions_delete_policy" ON public.transactions;
+DROP POLICY IF EXISTS "Allow authenticated read transactions" ON public.transactions;
+DROP POLICY IF EXISTS "Allow authenticated insert transactions" ON public.transactions;
+DROP POLICY IF EXISTS "Allow authenticated update transactions" ON public.transactions;
+DROP POLICY IF EXISTS "Allow authenticated delete transactions" ON public.transactions;
+
+DROP POLICY IF EXISTS "payments_select_policy" ON public.payments;
+DROP POLICY IF EXISTS "payments_insert_policy" ON public.payments;
+DROP POLICY IF EXISTS "payments_update_policy" ON public.payments;
+DROP POLICY IF EXISTS "payments_delete_policy" ON public.payments;
+DROP POLICY IF EXISTS "Allow authenticated read payments" ON public.payments;
+DROP POLICY IF EXISTS "Allow authenticated insert payments" ON public.payments;
+DROP POLICY IF EXISTS "Allow authenticated update payments" ON public.payments;
+DROP POLICY IF EXISTS "Allow authenticated delete payments" ON public.payments;
+
+-- PROFILES Policies
+CREATE POLICY "profiles_select_policy" ON public.profiles
+    FOR SELECT TO authenticated
+    USING (auth.uid() = id OR public.is_super_admin());
+
+CREATE POLICY "profiles_insert_policy" ON public.profiles
+    FOR INSERT TO authenticated
+    WITH CHECK (auth.uid() = id OR public.is_super_admin());
+
+CREATE POLICY "profiles_update_policy" ON public.profiles
+    FOR UPDATE TO authenticated
+    USING (auth.uid() = id OR public.is_super_admin())
+    WITH CHECK (auth.uid() = id OR public.is_super_admin());
+
+CREATE POLICY "profiles_delete_policy" ON public.profiles
+    FOR DELETE TO authenticated
+    USING (public.is_super_admin());
+
+-- DEALERS Policies (SELECT, INSERT, UPDATE, DELETE for authenticated users)
+CREATE POLICY "dealers_select_policy" ON public.dealers
+    FOR SELECT TO authenticated
+    USING (true);
+
+CREATE POLICY "dealers_insert_policy" ON public.dealers
+    FOR INSERT TO authenticated
+    WITH CHECK (true);
+
+CREATE POLICY "dealers_update_policy" ON public.dealers
+    FOR UPDATE TO authenticated
+    USING (true)
+    WITH CHECK (true);
+
+CREATE POLICY "dealers_delete_policy" ON public.dealers
+    FOR DELETE TO authenticated
+    USING (true);
+
+-- TRANSACTIONS Policies (SELECT, INSERT, UPDATE, DELETE for authenticated users)
+CREATE POLICY "transactions_select_policy" ON public.transactions
+    FOR SELECT TO authenticated
+    USING (true);
+
+CREATE POLICY "transactions_insert_policy" ON public.transactions
+    FOR INSERT TO authenticated
+    WITH CHECK (true);
+
+CREATE POLICY "transactions_update_policy" ON public.transactions
+    FOR UPDATE TO authenticated
+    USING (true)
+    WITH CHECK (true);
+
+CREATE POLICY "transactions_delete_policy" ON public.transactions
+    FOR DELETE TO authenticated
+    USING (true);
+
+-- PAYMENTS Policies (SELECT, INSERT, UPDATE, DELETE for authenticated users)
+CREATE POLICY "payments_select_policy" ON public.payments
+    FOR SELECT TO authenticated
+    USING (true);
+
+CREATE POLICY "payments_insert_policy" ON public.payments
+    FOR INSERT TO authenticated
+    WITH CHECK (true);
+
+CREATE POLICY "payments_update_policy" ON public.payments
+    FOR UPDATE TO authenticated
+    USING (true)
+    WITH CHECK (true);
+
+CREATE POLICY "payments_delete_policy" ON public.payments
+    FOR DELETE TO authenticated
+    USING (true);
+
+-- ==============================================================================
+-- DESIGNATE EXISTING AUTH USERS AS ACTIVE SUPER ADMIN IN PROFILES
+-- ==============================================================================
 INSERT INTO public.profiles (id, email, full_name, role, status)
 SELECT 
   id, 
@@ -192,4 +267,25 @@ SELECT
 FROM auth.users
 ON CONFLICT (id) DO UPDATE
 SET role = 'super_admin', status = 'active';
+
+-- ==============================================================================
+-- INITIAL SEED DATA (Only ABC Diamonds & Golden Carats)
+-- ==============================================================================
+INSERT INTO public.dealers (id, name, location, type, contact, email, phone, status)
+VALUES
+  ('dealer-abc', 'ABC Diamonds', 'Mumbai, India', 'both', 'Alex Brown', 'alex@abcdiamonds.com', '+91 22 5550 0198', 'Active'),
+  ('dealer-golden', 'Golden Carats', 'Delhi, India', 'both', 'Maya Shah', 'maya@goldencarats.com', '+91 11 5550 0186', 'Active')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.transactions (id, name, dealer_id, seller_id, buyer_id, date, diamond_carat, per_carat_rate, total_rate, amount, terms, due_days, sell_type, other_sell_type, brokerage_rate, brokerage_earned, status, payment_method, notes)
+VALUES
+  ('TRX-20481', 'Mumbai Lot #102', 'dealer-abc', 'dealer-abc', 'dealer-golden', '2024-09-03', 10.00, 50000.00, 500000.00, 500000.00, 2.00, 30, 'Self', '', 5.00, 25000.00, 'Completed', 'Bank transfer', 'Round brilliant diamond lot.'),
+  ('TRX-20480', 'Delhi Lot #88', 'dealer-golden', 'dealer-golden', 'dealer-abc', '2024-09-02', 12.50, 80000.00, 1000000.00, 1000000.00, 2.50, 45, 'Other', 'Wholesale', 5.00, 50000.00, 'Pending', 'Bank transfer', 'Fancy cut diamond parcel.')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.payments (id, transaction_id, dealer_id, date, amount, method, status)
+VALUES
+  ('PAY-8300', 'TRX-20481', 'dealer-abc', '2024-09-03', 500000.00, 'Bank transfer', 'Completed'),
+  ('PAY-8301', 'TRX-20480', 'dealer-golden', '2024-09-02', 1000000.00, 'Bank transfer', 'Pending')
+ON CONFLICT (id) DO NOTHING;
 
