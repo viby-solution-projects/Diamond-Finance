@@ -361,6 +361,53 @@ body,.app-shell,.main-area,.content{overflow-x:hidden}.table-scroll{overflow-x:v
 .btn-action-primary{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:6px;font-size:11.5px;font-weight:600;color:#fff;background:var(--blue);border:1px solid var(--blue);box-shadow:0 1px 3px rgba(35,100,232,.2);cursor:pointer;transition:all .15s ease;white-space:nowrap}
 .btn-action-primary:hover{background:#1b54c8;border-color:#1b54c8;box-shadow:0 2px 6px rgba(35,100,232,.3)}
 .btn-action-primary:disabled{opacity:.55;cursor:not-allowed;box-shadow:none}
+
+/* Simplified Add Payment Form (Mobile-First) */
+.payment-sheet-overlay{position:fixed;inset:0;background:rgba(18,31,53,.55);backdrop-filter:blur(3px);z-index:120;display:flex;align-items:center;justify-content:center;padding:16px;animation:fadeIn .15s ease}
+.payment-sheet-card{background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 16px 40px rgba(18,31,53,.16);width:100%;max-width:440px;max-height:92vh;overflow-y:auto;display:flex;flex-direction:column;animation:modalPop .18s ease-out}
+.payment-sheet-header{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--line);background:#fff;position:sticky;top:0;z-index:2}
+.payment-back-btn{display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:var(--muted);font-size:13px;font-weight:600;padding:4px 6px;border-radius:6px;cursor:pointer;transition:all .15s ease}
+.payment-back-btn:hover{color:var(--ink);background:#f1f4f9}
+.payment-sheet-title{font-family:Manrope,sans-serif;font-size:17px;font-weight:700;color:var(--ink);margin:0}
+.payment-sheet-body{padding:22px 20px;display:flex;flex-direction:column;gap:20px;flex:1}
+.payment-deal-info{display:flex;flex-direction:column;gap:2px}
+.payment-deal-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.payment-deal-name{font-family:Manrope,sans-serif;font-size:18px;font-weight:700;color:var(--ink);line-height:1.3}
+.payment-remaining-card{background:#f4f8fe;border:1px solid #dce8fc;border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:4px}
+.payment-remaining-label{font-size:12px;color:#4c6694;font-weight:600}
+.payment-remaining-val{font-family:Manrope,sans-serif;font-size:24px;font-weight:800;color:#1d54d5;letter-spacing:-.01em}
+.payment-field-group{display:flex;flex-direction:column;gap:6px}
+.payment-field-label{font-size:13px;font-weight:600;color:var(--ink)}
+.payment-amount-input-box{display:flex;align-items:center;border:1.5px solid var(--line);border-radius:8px;background:#fff;height:50px;padding:0 14px;transition:all .15s ease}
+.payment-amount-input-box:focus-within{border-color:var(--blue);box-shadow:0 0 0 3px rgba(35,100,232,.12)}
+.payment-amount-input-box.has-error{border-color:#e5484d;background:#fffafa}
+.payment-currency-sym{font-family:Manrope,sans-serif;font-size:20px;font-weight:700;color:var(--muted);margin-right:8px}
+.payment-amount-input{flex:1;border:none;outline:none;background:transparent;font-family:Manrope,sans-serif;font-size:20px;font-weight:700;color:var(--ink);width:100%}
+.payment-amount-input::placeholder{color:#b5c0cf;font-weight:500}
+.payment-amount-helper{font-size:11.5px;color:var(--muted);font-weight:500;margin-top:2px}
+.payment-inline-error{font-size:12px;color:#c93b43;font-weight:600;margin-top:2px;line-height:1.35}
+.payment-control-input{width:100%;height:44px;border:1px solid var(--line);border-radius:8px;padding:0 12px;font-size:13.5px;color:var(--ink);background:#fff;outline:none;transition:border-color .15s ease}
+.payment-control-input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(35,100,232,.12)}
+.payment-sheet-actions{display:flex;flex-direction:column;gap:10px;padding:16px 20px 20px;background:#fbfcfd;border-top:1px solid var(--line);border-bottom-left-radius:14px;border-bottom-right-radius:14px}
+.payment-submit-btn{width:100%;height:46px;font-size:14px;font-weight:700;color:#fff;background:var(--blue);border:none;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(35,100,232,.28);transition:all .15s ease}
+.payment-submit-btn:hover:not(:disabled){background:#1b54c8}
+.payment-submit-btn:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
+.payment-cancel-btn{width:100%;height:38px;font-size:13px;font-weight:600;color:var(--muted);background:transparent;border:none;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s ease}
+.payment-cancel-btn:hover{color:var(--ink);background:#f1f4f9}
+
+@media(max-width:767px){
+  .payment-sheet-overlay{padding:0;align-items:stretch;background:#fff}
+  .payment-sheet-card{max-width:100%;max-height:100vh;height:100vh;border-radius:0;border:none;box-shadow:none}
+  .payment-sheet-header{padding:14px 16px}
+  .payment-sheet-body{padding:18px 16px 120px;gap:18px}
+  .payment-remaining-val{font-size:26px}
+  .payment-amount-input-box{height:54px;padding:0 16px}
+  .payment-amount-input,.payment-currency-sym{font-size:22px}
+  .payment-control-input{height:48px;font-size:14px}
+  .payment-sheet-actions{position:fixed;bottom:0;left:0;right:0;padding:14px 16px calc(14px + env(safe-area-inset-bottom,0px));background:#fff;border-top:1px solid var(--line);border-radius:0;z-index:10;box-shadow:0 -4px 16px rgba(18,31,53,.08)}
+  .payment-submit-btn{height:50px;font-size:15px}
+}
+
 .dealer-role-tag{display:inline-flex;align-items:center;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600;background:#edf3ff;color:var(--blue);border:1px solid #d4e3fc}
 .analytics-header-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .period-control{min-height:36px;margin-top:0;min-width:240px}

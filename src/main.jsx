@@ -20,6 +20,7 @@ import {
   X,
   ArrowUpRight,
   ArrowDownRight,
+  ArrowLeft,
   Download,
   Check,
   CalendarDays,
@@ -1038,9 +1039,7 @@ function SearchInput({ value, onChange, placeholder }) {
 function AddDealPaymentModal({ open, onClose, deal, onPaymentSaved }) {
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [method, setMethod] = useState("Bank transfer");
-  const [reference, setReference] = useState("");
-  const [notes, setNotes] = useState("");
+  const [method, setMethod] = useState("Bank Transfer");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -1048,9 +1047,7 @@ function AddDealPaymentModal({ open, onClose, deal, onPaymentSaved }) {
     if (open && deal) {
       setAmount("");
       setDate(new Date().toISOString().slice(0, 10));
-      setMethod("Bank transfer");
-      setReference("");
-      setNotes("");
+      setMethod("Bank Transfer");
       setError("");
       setSubmitting(false);
     }
@@ -1058,6 +1055,7 @@ function AddDealPaymentModal({ open, onClose, deal, onPaymentSaved }) {
 
   if (!open || !deal) return null;
 
+  const dealName = deal.deal?.name || deal.name || "Deal";
   const remaining = Number(deal.remaining) || 0;
   const numAmount = Number(String(amount).replace(/,/g, "")) || 0;
 
@@ -1067,17 +1065,20 @@ function AddDealPaymentModal({ open, onClose, deal, onPaymentSaved }) {
     const parsed = Number(raw) || 0;
     if (parsed > remaining) {
       setError("Payment cannot be more than the remaining amount.");
+    } else if (parsed <= 0 && raw !== "") {
+      setError("Enter a valid payment amount.");
     } else {
       setError("");
     }
   };
 
+  const isInvalid = !numAmount || numAmount <= 0 || numAmount > remaining;
+
   const handleSubmit = async (event) => {
     event.preventDefault();
-    setError("");
 
     if (!numAmount || numAmount <= 0) {
-      setError("Please enter an amount greater than 0.");
+      setError("Enter a valid payment amount.");
       return;
     }
 
@@ -1093,9 +1094,7 @@ function AddDealPaymentModal({ open, onClose, deal, onPaymentSaved }) {
         dealerId: deal.deal?.dealerId || deal.deal?.sellerId || deal.dealerId || deal.sellerId || null,
         amount: numAmount,
         date: date || new Date().toISOString().slice(0, 10),
-        method: method || "Bank transfer",
-        reference: reference.trim(),
-        notes: notes.trim(),
+        method: method || "Bank Transfer",
       });
       onClose();
     } catch (err) {
@@ -1106,119 +1105,69 @@ function AddDealPaymentModal({ open, onClose, deal, onPaymentSaved }) {
     }
   };
 
-  const isInvalid = !numAmount || numAmount <= 0 || numAmount > remaining;
-
   return (
-    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="modal-card" style={{ maxWidth: "440px" }} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <h3>Add Payment</h3>
+    <div className="payment-sheet-overlay" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="payment-sheet-card" onClick={(e) => e.stopPropagation()}>
+        <div className="payment-sheet-header">
+          <button type="button" className="payment-back-btn" onClick={onClose} aria-label="Go back">
+            <ArrowLeft size={16} />
+            <span>Back</span>
+          </button>
+          <h3 className="payment-sheet-title">Add Payment</h3>
           <button className="icon-btn" onClick={onClose} aria-label="Close modal">
-            <X size={16} />
+            <X size={18} />
           </button>
         </div>
-        <form onSubmit={handleSubmit}>
-          <div className="modal-body" style={{ gap: "16px" }}>
-            <div
-              style={{
-                background: "var(--blue-soft)",
-                border: "1px solid #d4e3fc",
-                borderRadius: "8px",
-                padding: "12px 14px",
-                display: "flex",
-                flexDirection: "column",
-                gap: "4px",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: 600 }}>Deal:</span>
-                <b style={{ fontSize: "13px", color: "var(--ink)" }}>{deal.deal?.name || deal.name}</b>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: 600 }}>Remaining:</span>
-                <strong style={{ fontSize: "15px", fontFamily: "Manrope", color: "var(--blue)" }}>
-                  {money(remaining)}
-                </strong>
-              </div>
+
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+          <div className="payment-sheet-body">
+            <div className="payment-deal-info">
+              <span className="payment-deal-label">Deal</span>
+              <div className="payment-deal-name">{dealName}</div>
             </div>
 
-            {error && (
-              <div
-                style={{
-                  background: "#fff4f2",
-                  border: "1px solid #fbd2ce",
-                  borderRadius: "6px",
-                  padding: "9px 12px",
-                  color: "#b8323c",
-                  fontSize: "12px",
-                  fontWeight: 500,
-                  lineHeight: 1.4,
-                }}
-                role="alert"
-              >
-                {error}
-              </div>
-            )}
+            <div className="payment-remaining-card">
+              <span className="payment-remaining-label">Remaining amount</span>
+              <div className="payment-remaining-val">{money(remaining)}</div>
+            </div>
 
-            <div>
-              <label style={{ display: "block", fontSize: "11px", fontWeight: 600, marginBottom: "6px" }}>
-                Amount
+            <div className="payment-field-group">
+              <label htmlFor="payment-amount-input" className="payment-field-label">
+                Payment amount
               </label>
-              <div className="input-with-symbol">
-                <span className="input-symbol">₹</span>
+              <div className={`payment-amount-input-box ${error ? "has-error" : ""}`}>
+                <span className="payment-currency-sym">₹</span>
                 <input
+                  id="payment-amount-input"
                   type="text"
                   inputMode="decimal"
                   value={amount}
                   onChange={handleAmountChange}
-                  placeholder="Enter amount"
+                  placeholder="0"
                   autoFocus
                   required
+                  className="payment-amount-input"
                 />
               </div>
+              <div className="payment-amount-helper">Maximum {money(remaining)}</div>
+              {error && (
+                <div className="payment-inline-error" role="alert">
+                  {error}
+                </div>
+              )}
             </div>
 
-            <div>
-              <label style={{ display: "block", fontSize: "11px", fontWeight: 600, marginBottom: "6px" }}>
-                Payment Date
-              </label>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                required
-                style={{
-                  width: "100%",
-                  height: "38px",
-                  border: "1px solid var(--line)",
-                  borderRadius: "6px",
-                  padding: "0 10px",
-                  fontSize: "12px",
-                  color: "var(--ink)",
-                  background: "#fff",
-                }}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: "block", fontSize: "11px", fontWeight: 600, marginBottom: "6px" }}>
-                Payment Method
+            <div className="payment-field-group">
+              <label htmlFor="payment-method-select" className="payment-field-label">
+                Payment method
               </label>
               <select
+                id="payment-method-select"
                 value={method}
                 onChange={(e) => setMethod(e.target.value)}
-                style={{
-                  width: "100%",
-                  height: "38px",
-                  border: "1px solid var(--line)",
-                  borderRadius: "6px",
-                  padding: "0 10px",
-                  fontSize: "12px",
-                  color: "var(--ink)",
-                  background: "#fff",
-                }}
+                className="payment-control-input"
               >
-                <option value="Bank transfer">Bank Transfer</option>
+                <option value="Bank Transfer">Bank Transfer</option>
                 <option value="UPI">UPI</option>
                 <option value="Cash">Cash</option>
                 <option value="Cheque">Cheque</option>
@@ -1226,58 +1175,37 @@ function AddDealPaymentModal({ open, onClose, deal, onPaymentSaved }) {
               </select>
             </div>
 
-            <div>
-              <label style={{ display: "block", fontSize: "11px", fontWeight: 600, marginBottom: "6px" }}>
-                Reference
+            <div className="payment-field-group">
+              <label htmlFor="payment-date-input" className="payment-field-label">
+                Payment date
               </label>
               <input
-                type="text"
-                value={reference}
-                onChange={(e) => setReference(e.target.value)}
-                placeholder="UTR, Cheque #, or reference (optional)"
-                style={{
-                  width: "100%",
-                  height: "38px",
-                  border: "1px solid var(--line)",
-                  borderRadius: "6px",
-                  padding: "0 10px",
-                  fontSize: "12px",
-                  color: "var(--ink)",
-                  background: "#fff",
-                }}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: "block", fontSize: "11px", fontWeight: 600, marginBottom: "6px" }}>
-                Notes
-              </label>
-              <input
-                type="text"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Additional notes (optional)"
-                style={{
-                  width: "100%",
-                  height: "38px",
-                  border: "1px solid var(--line)",
-                  borderRadius: "6px",
-                  padding: "0 10px",
-                  fontSize: "12px",
-                  color: "var(--ink)",
-                  background: "#fff",
-                }}
+                id="payment-date-input"
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                required
+                className="payment-control-input"
               />
             </div>
           </div>
 
-          <div className="modal-actions">
-            <Button secondary type="button" onClick={onClose} disabled={submitting}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isInvalid || submitting}>
+          <div className="payment-sheet-actions">
+            <button
+              type="submit"
+              className="payment-submit-btn"
+              disabled={isInvalid || submitting}
+            >
               {submitting ? "Saving..." : "Save Payment"}
-            </Button>
+            </button>
+            <button
+              type="button"
+              className="payment-cancel-btn"
+              onClick={onClose}
+              disabled={submitting}
+            >
+              Cancel
+            </button>
           </div>
         </form>
       </div>
@@ -1327,12 +1255,7 @@ function Deals({ onNavigate }) {
 
   const openDetails = (id) => onNavigate("/transaction-details?id=" + id);
 
-  const handleSavePayment = async ({ transactionId, dealerId, amount, date, method, reference, notes }) => {
-    const combinedNotes = [
-      reference ? `Ref: ${reference}` : "",
-      notes,
-    ].filter(Boolean).join(" • ");
-
+  const handleSavePayment = async ({ transactionId, dealerId, amount, date, method }) => {
     const newPayment = {
       id: nextId("PAY", data.payments),
       transactionId,
@@ -1341,7 +1264,7 @@ function Deals({ onNavigate }) {
       amount,
       method,
       status: "Completed",
-      notes: combinedNotes,
+      notes: "",
     };
 
     await addPayment(newPayment);
@@ -1862,11 +1785,6 @@ function DealDetails({ onNavigate }) {
         onClose={() => setPaymentModal(false)}
         deal={{ deal, remaining: remainingAmount }}
         onPaymentSaved={async (paymentInfo) => {
-          const combinedNotes = [
-            paymentInfo.reference ? `Ref: ${paymentInfo.reference}` : "",
-            paymentInfo.notes,
-          ].filter(Boolean).join(" • ");
-
           const newPayment = {
             id: nextId("PAY", data.payments),
             transactionId: deal.id,
@@ -1875,7 +1793,7 @@ function DealDetails({ onNavigate }) {
             amount: paymentInfo.amount,
             method: paymentInfo.method,
             status: "Completed",
-            notes: combinedNotes,
+            notes: "",
           };
 
           await addPayment(newPayment);
