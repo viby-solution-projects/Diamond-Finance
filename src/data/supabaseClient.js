@@ -103,6 +103,60 @@ export async function authSignIn(email, password) {
 }
 
 /**
+ * Password Reset: Send password reset instructions to user email via Supabase Auth
+ */
+export async function authResetPasswordForEmail(email) {
+  const normalizedEmail = (email || '').trim().toLowerCase();
+  if (!normalizedEmail) {
+    throw new Error('Please enter your email address.');
+  }
+
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error('Supabase is not configured.');
+  }
+
+  const redirectTo = typeof window !== 'undefined' 
+    ? `${window.location.origin}/login?type=recovery` 
+    : undefined;
+
+  const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+    redirectTo,
+  });
+
+  if (error) {
+    console.error('Password reset request error:', error);
+    throw new Error(error.message || 'Unable to send password reset email.');
+  }
+
+  return true;
+}
+
+/**
+ * Password Update: Update password for current authenticated/recovery session
+ */
+export async function authUpdatePassword(newPassword) {
+  const cleanPassword = (newPassword || '').trim();
+  if (!cleanPassword || cleanPassword.length < 6) {
+    throw new Error('Password must be at least 6 characters long.');
+  }
+
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error('Supabase is not configured.');
+  }
+
+  const { data, error } = await supabase.auth.updateUser({
+    password: cleanPassword,
+  });
+
+  if (error) {
+    console.error('Password update error:', error);
+    throw new Error(error.message || 'Unable to update password.');
+  }
+
+  return data;
+}
+
+/**
  * Sign out and clear active session
  */
 export async function authSignOut() {

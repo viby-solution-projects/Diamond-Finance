@@ -44,6 +44,8 @@ import {
   authSignIn,
   authSignOut,
   authGetSession,
+  authResetPasswordForEmail,
+  authUpdatePassword,
   fetchProfiles,
   updateProfile,
   toggleUserStatus,
@@ -219,6 +221,37 @@ function App() {
     } catch (err) {
       console.error("addTransaction error:", err);
       alert(err.message || "Failed to create transaction.");
+      throw err;
+    }
+  };
+
+  const updateTransaction = async (id, updated) => {
+    try {
+      await supabaseRepo.updateTransaction(id, updated);
+      setData((prev) => ({
+        ...prev,
+        transactions: prev.transactions.map((t) =>
+          t.id === id ? { ...t, ...updated } : t
+        ),
+      }));
+    } catch (err) {
+      console.error("updateTransaction error:", err);
+      alert(err.message || "Failed to update transaction.");
+      throw err;
+    }
+  };
+
+  const deleteTransaction = async (id) => {
+    try {
+      await supabaseRepo.deleteTransaction(id);
+      setData((prev) => ({
+        ...prev,
+        transactions: prev.transactions.filter((t) => t.id !== id),
+      }));
+      return { success: true };
+    } catch (err) {
+      console.error("deleteTransaction error:", err);
+      return { success: false, reason: err.message || "Failed to delete transaction." };
     }
   };
 
@@ -232,6 +265,7 @@ function App() {
     } catch (err) {
       console.error("addPayment error:", err);
       alert(err.message || "Failed to record payment.");
+      throw err;
     }
   };
 
@@ -384,6 +418,8 @@ function App() {
         user,
         profile,
         addTransaction,
+        updateTransaction,
+        deleteTransaction,
         addPayment,
         addDealer,
         updateDealer,
@@ -1085,7 +1121,8 @@ function Transactions({ onNavigate }) {
   );
 }
 function TransactionDetails({ onNavigate }) {
-  const { data } = useData();
+  const { data, updateTransaction } = useData();
+  const [editModal, setEditModal] = useState(false);
   const id =
     new URLSearchParams(window.location.search).get("id") ||
     data.transactions[0]?.id;
@@ -1093,6 +1130,7 @@ function TransactionDetails({ onNavigate }) {
     data.transactions.find((item) => item.id === id) || data.transactions[0];
   const dealer = data.dealers.find((item) => item.id === (transaction?.sellerId || transaction?.dealerId));
   const buyer = data.dealers.find((item) => item.id === transaction?.buyerId);
+
   if (!transaction)
     return (
       <Panel title="Transaction not found">
@@ -1101,6 +1139,11 @@ function TransactionDetails({ onNavigate }) {
         </Button>
       </Panel>
     );
+
+  const handleSaveTransaction = async (updatedData) => {
+    await updateTransaction(transaction.id, updatedData);
+  };
+
   return (
     <>
       <PageHeader
@@ -1112,6 +1155,13 @@ function TransactionDetails({ onNavigate }) {
         description="Transaction details and payment timeline."
         action={
           <div className="header-actions">
+            <Button
+              secondary
+              onClick={() => setEditModal(true)}
+              icon={Pencil}
+            >
+              Edit transaction
+            </Button>
             <Button
               secondary
               onClick={() =>
@@ -1225,9 +1275,377 @@ function TransactionDetails({ onNavigate }) {
           </div>
         </Panel>
       </div>
+
+      <EditTransactionModal
+        open={editModal}
+        onClose={() => setEditModal(false)}
+        transaction={transaction}
+        onSave={handleSaveTransaction}
+      />
     </>
   );
 }
+
+function EditTransactionModal({ open, onClose, transaction, onSave }) {
+  const { data } = useData();
+  const sellerDealers = data.dealers.filter(
+    (d) => !d.type || d.type === "seller" || d.type === "both"
+  );
+  const buyerDealers = data.dealers.filter(
+    (d) => !d.type || d.type === "buyer" || d.type === "both"
+  );
+  const [form, setForm] = useState({
+    name: "",
+    date: "",
+    diamondCarat: "",
+    perCaratRate: "",
+    terms: "2",
+    dueDays: "30",
+    sellType: "Self",
+    otherSellType: "",
+    sellerId: "",
+    buyerId: "",
+    brokerageRate: "5",
+    paymentMethod: "Bank transfer",
+    status: "Pending",
+    notes: "",
+  });
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (transaction && open) {
+      setForm({
+        name: transaction.name || "",
+        date: transaction.date || new Date().toISOString().split("T")[0],
+        diamondCarat: String(transaction.diamondCarat ?? ""),
+        perCaratRate: transaction.perCaratRate ? formatIndianNumber(transaction.perCaratRate) : "",
+        terms: String(transaction.terms ?? 2),
+        dueDays: String(transaction.dueDays ?? 30),
+        sellType: transaction.sellType || "Self",
+        otherSellType: transaction.otherSellType || "",
+        sellerId: transaction.sellerId || transaction.dealerId || "",
+        buyerId: transaction.buyerId || "",
+        brokerageRate: String(transaction.brokerageRate ?? 5),
+        paymentMethod: transaction.paymentMethod || "Bank transfer",
+        status: transaction.status || "Pending",
+        notes: transaction.notes || "",
+      });
+      setError("");
+    }
+  }, [transaction, open]);
+
+  if (!open || !transaction) return null;
+
+  const caratValue = parseFloat(form.diamondCarat) || 0;
+  const perCaratRateValue = parseFloat(String(form.perCaratRate).replace(/,/g, "")) || 0;
+  const totalRateValue =
+    caratValue > 0 && perCaratRateValue > 0
+      ? Math.round(caratValue * perCaratRateValue * 100) / 100
+      : 0;
+
+  const brokerageRateValue = Number(form.brokerageRate) || 0;
+  const brokerageEarned = (totalRateValue * brokerageRateValue) / 100;
+
+  const set = (event) =>
+    setForm((previous) => ({
+      ...previous,
+      [event.target.name]: event.target.value,
+    }));
+
+  const submit = async (event) => {
+    event.preventDefault();
+    const carat = Number(form.diamondCarat);
+    const rate = Number(String(form.perCaratRate).replace(/,/g, ""));
+    const terms = Number(form.terms);
+    const dueDays = Number(form.dueDays);
+    const brokerageRate = Number(form.brokerageRate);
+
+    if (!form.name.trim()) return setError("Please enter a transaction name.");
+    if (!form.date) return setError("Please select a transaction date.");
+    if (!form.diamondCarat || !Number.isFinite(carat) || carat <= 0) {
+      return setError("Diamond carat must be a valid number greater than 0.");
+    }
+    if (!form.perCaratRate || !Number.isFinite(rate) || rate <= 0) {
+      return setError("Per carat rate must be a valid amount greater than 0.");
+    }
+    if (form.terms === "" || !Number.isFinite(terms) || terms < 0) {
+      return setError("Terms (%) must be 0 or greater.");
+    }
+    if (form.dueDays === "" || !Number.isFinite(dueDays) || dueDays < 0) {
+      return setError("Due days must be 0 or greater.");
+    }
+    if (form.sellType === "Other" && !form.otherSellType.trim()) {
+      return setError("Please specify the other sell type.");
+    }
+    if (!form.sellerId) return setError("Please select a seller dealer.");
+    if (!form.buyerId) return setError("Please select a buyer dealer.");
+    if (form.sellerId === form.buyerId) {
+      return setError("Seller and buyer must be different dealers.");
+    }
+
+    const totalRate = Math.round(carat * rate * 100) / 100;
+    const earned = Math.round(((totalRate * (Number.isFinite(brokerageRate) ? brokerageRate : 5)) / 100) * 100) / 100;
+
+    try {
+      await onSave({
+        name: form.name.trim(),
+        date: form.date,
+        diamondCarat: carat,
+        perCaratRate: rate,
+        totalRate,
+        amount: totalRate,
+        terms,
+        dueDays,
+        sellType: form.sellType,
+        otherSellType: form.sellType === "Other" ? form.otherSellType.trim() : "",
+        sellerId: form.sellerId,
+        dealerId: form.sellerId,
+        buyerId: form.buyerId,
+        brokerageRate: Number.isFinite(brokerageRate) ? brokerageRate : 5,
+        brokerageEarned: earned,
+        paymentMethod: form.paymentMethod || "Bank transfer",
+        notes: form.notes.trim(),
+        status: form.status || "Pending",
+      });
+      onClose();
+    } catch (err) {
+      setError(err?.message || "Failed to update transaction.");
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="modal-card" style={{ maxWidth: "600px" }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h3>Edit transaction — {transaction.id}</h3>
+          <button className="icon-btn" onClick={onClose} aria-label="Close modal">
+            <X size={16} />
+          </button>
+        </div>
+        <form onSubmit={submit}>
+          <div className="modal-body">
+            {error && <div className="form-error">{error}</div>}
+            <div className="form-grid" style={{ padding: 0 }}>
+              <label className="field-group">
+                <span className="field-title">Transaction Name</span>
+                <input
+                  name="name"
+                  value={form.name}
+                  onChange={set}
+                  placeholder="e.g. Mumbai Lot #102"
+                  required
+                />
+              </label>
+              <label className="field-group">
+                <span className="field-title">Transaction Date</span>
+                <input
+                  name="date"
+                  type="date"
+                  value={form.date}
+                  onChange={set}
+                  required
+                />
+              </label>
+              <label className="field-group">
+                <span className="field-title">Diamond Carat</span>
+                <input
+                  name="diamondCarat"
+                  type="text"
+                  inputMode="decimal"
+                  value={form.diamondCarat}
+                  onChange={(event) => {
+                    const raw = event.target.value.replace(/[^0-9.]/g, "");
+                    const parts = raw.split(".");
+                    let clean = parts[0];
+                    if (parts.length > 1) {
+                      clean = parts[0] + "." + parts.slice(1).join("").slice(0, 2);
+                    }
+                    setForm((p) => ({ ...p, diamondCarat: clean }));
+                  }}
+                  placeholder="e.g. 10.50"
+                  required
+                />
+              </label>
+              <label className="field-group">
+                <span className="field-title">Per Carat Rate</span>
+                <div className="input-with-symbol">
+                  <span className="input-symbol">₹</span>
+                  <input
+                    name="perCaratRate"
+                    type="text"
+                    inputMode="numeric"
+                    value={form.perCaratRate}
+                    onChange={(event) => {
+                      const raw = event.target.value
+                        .replace(/[^0-9.]/g, "")
+                        .replace(/(\..*)\./g, "$1");
+                      setForm((p) => ({
+                        ...p,
+                        perCaratRate: raw ? formatIndianNumber(raw) : "",
+                      }));
+                    }}
+                    placeholder="e.g. 50,000"
+                    required
+                  />
+                </div>
+              </label>
+              <div className="field-group calculated-cell">
+                <div className="calculated-field-card">
+                  <div className="calc-header">
+                    <span className="field-title">Total Rate</span>
+                    <span className="calc-badge">Auto Calculated</span>
+                  </div>
+                  <div className="calc-value">{money(totalRateValue)}</div>
+                  <span className="calc-formula">Carat × Per Carat Rate</span>
+                </div>
+              </div>
+              <label className="field-group">
+                <span className="field-title">Terms (%)</span>
+                <input
+                  name="terms"
+                  type="text"
+                  inputMode="decimal"
+                  value={form.terms}
+                  onChange={(e) =>
+                    setForm((p) => ({
+                      ...p,
+                      terms: e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1"),
+                    }))
+                  }
+                  placeholder="e.g. 2"
+                  required
+                />
+              </label>
+              <label className="field-group">
+                <span className="field-title">Due Days</span>
+                <input
+                  name="dueDays"
+                  type="text"
+                  inputMode="numeric"
+                  value={form.dueDays}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, dueDays: e.target.value.replace(/[^0-9]/g, "") }))
+                  }
+                  placeholder="e.g. 30"
+                  required
+                />
+              </label>
+              <div className="field-group">
+                <span className="field-title">Sell Type</span>
+                <div className="segmented-control" role="radiogroup" aria-label="Sell Type">
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={form.sellType === "Self"}
+                    className={`segmented-btn ${form.sellType === "Self" ? "active" : ""}`}
+                    onClick={() => setForm((prev) => ({ ...prev, sellType: "Self" }))}
+                  >
+                    Self
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={form.sellType === "Other"}
+                    className={`segmented-btn ${form.sellType === "Other" ? "active" : ""}`}
+                    onClick={() => setForm((prev) => ({ ...prev, sellType: "Other" }))}
+                  >
+                    Other
+                  </button>
+                </div>
+                {form.sellType === "Other" && (
+                  <div className="other-sell-field">
+                    <label className="field-group subfield-margin">
+                      <span className="field-title">Other Sell Type</span>
+                      <input
+                        name="otherSellType"
+                        type="text"
+                        value={form.otherSellType}
+                        onChange={set}
+                        placeholder="Enter sell type (e.g. Wholesale)"
+                        required
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+              <label className="field-group">
+                <span className="field-title">Seller</span>
+                <select name="sellerId" value={form.sellerId} onChange={set} required>
+                  <option value="">Select dealer</option>
+                  {sellerDealers.map((d) => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="field-group">
+                <span className="field-title">Buyer</span>
+                <select name="buyerId" value={form.buyerId} onChange={set} required>
+                  <option value="">Select dealer</option>
+                  {buyerDealers.map((d) => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="field-group">
+                <span className="field-title">Brokerage (%)</span>
+                <input
+                  name="brokerageRate"
+                  type="text"
+                  inputMode="decimal"
+                  value={form.brokerageRate}
+                  onChange={(e) =>
+                    setForm((p) => ({
+                      ...p,
+                      brokerageRate: e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1"),
+                    }))
+                  }
+                  placeholder="1.00"
+                  required
+                />
+              </label>
+              <div className="earned-field">
+                <span>Brokerage earned</span>
+                <strong>{money(brokerageEarned)}</strong>
+              </div>
+              <label className="field-group">
+                <span className="field-title">Status</span>
+                <select name="status" value={form.status} onChange={set} required>
+                  <option>Pending</option>
+                  <option>Processing</option>
+                  <option>Completed</option>
+                </select>
+              </label>
+              <label className="field-group">
+                <span className="field-title">Payment method</span>
+                <select name="paymentMethod" value={form.paymentMethod} onChange={set}>
+                  <option>Bank transfer</option>
+                  <option>Credit card</option>
+                  <option>Cash</option>
+                </select>
+              </label>
+              <label className="field-group full">
+                <span className="field-title">Description</span>
+                <textarea
+                  name="notes"
+                  value={form.notes}
+                  onChange={set}
+                  placeholder="Enter a description..."
+                />
+              </label>
+            </div>
+          </div>
+          <div className="modal-actions">
+            <Button secondary type="button" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit">Save Changes</Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function Detail({ label, value }) {
   return (
     <div className="detail">
@@ -1273,6 +1691,7 @@ function NewTransaction({ onNavigate }) {
     notes: "",
   });
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const caratValue = parseFloat(form.diamondCarat) || 0;
   const perCaratRateValue = parseFloat(String(form.perCaratRate).replace(/,/g, "")) || 0;
@@ -1290,8 +1709,11 @@ function NewTransaction({ onNavigate }) {
       [event.target.name]: event.target.value,
     }));
 
-  const submit = (event) => {
+  const submit = async (event) => {
     event.preventDefault();
+    if (submitting) return;
+    setError("");
+
     const carat = Number(form.diamondCarat);
     const rate = Number(String(form.perCaratRate).replace(/,/g, ""));
     const terms = Number(form.terms);
@@ -1346,8 +1768,15 @@ function NewTransaction({ onNavigate }) {
       status: form.status || "Pending",
     };
 
-    addTransaction(transaction);
-    onNavigate("/transaction-details?id=" + transaction.id);
+    setSubmitting(true);
+    try {
+      await addTransaction(transaction);
+      onNavigate("/transaction-details?id=" + transaction.id);
+    } catch (err) {
+      setError(err?.message || "Failed to create transaction.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -1620,10 +2049,13 @@ function NewTransaction({ onNavigate }) {
             secondary
             onClick={() => onNavigate("/transactions")}
             icon={null}
+            disabled={submitting}
           >
             Cancel
           </Button>
-          <Button type="submit">Create transaction</Button>
+          <Button type="submit" disabled={submitting}>
+            {submitting ? "Saving..." : "Create transaction"}
+          </Button>
         </div>
       </form>
     </>
@@ -3163,16 +3595,49 @@ function SettingsPage({ onNavigate }) {
 }
 
 function LoginPage({ onLoginSuccess }) {
+  const [mode, setMode] = useState(() => {
+    if (typeof window !== "undefined") {
+      const search = new URLSearchParams(window.location.search);
+      const hash = window.location.hash || "";
+      if (
+        search.get("type") === "recovery" ||
+        hash.includes("type=recovery") ||
+        search.get("reset") === "true"
+      ) {
+        return "reset";
+      }
+    }
+    return "login";
+  });
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [error, setError] = useState("");
+  const [successNotice, setSuccessNotice] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e) => {
+  useEffect(() => {
+    if (supabase) {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+        if (event === "PASSWORD_RECOVERY") {
+          setMode("reset");
+          setError("");
+          setSuccessNotice("");
+        }
+      });
+      return () => subscription?.unsubscribe();
+    }
+  }, []);
+
+  const handleLoginSubmit = async (e) => {
     e.preventDefault();
     if (loading) return;
     setError("");
+    setSuccessNotice("");
 
     const cleanEmail = email.trim();
     const cleanPassword = password.trim();
@@ -3193,6 +3658,75 @@ function LoginPage({ onLoginSuccess }) {
     }
   };
 
+  const handleForgotPasswordSubmit = async (e) => {
+    e.preventDefault();
+    if (loading) return;
+    setError("");
+    setSuccessNotice("");
+
+    const cleanEmail = email.trim();
+    if (!cleanEmail) {
+      setError("Please enter your email address.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await authResetPasswordForEmail(cleanEmail);
+      setSuccessNotice(
+        `Password reset instructions have been sent to ${cleanEmail}. Please check your inbox and click the reset link.`
+      );
+    } catch (err) {
+      setError(err?.message || "Failed to send password reset instructions.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPasswordSubmit = async (e) => {
+    e.preventDefault();
+    if (loading) return;
+    setError("");
+    setSuccessNotice("");
+
+    const cleanNewPassword = newPassword.trim();
+    const cleanConfirm = confirmPassword.trim();
+
+    if (!cleanNewPassword || !cleanConfirm) {
+      setError("Please fill in both password fields.");
+      return;
+    }
+
+    if (cleanNewPassword.length < 6) {
+      setError("Password must be at least 6 characters long.");
+      return;
+    }
+
+    if (cleanNewPassword !== cleanConfirm) {
+      setError("Passwords do not match.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await authUpdatePassword(cleanNewPassword);
+      setSuccessNotice("Your password has been updated successfully. You can now sign in.");
+      setTimeout(() => {
+        setMode("login");
+        setPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+        if (typeof window !== "undefined") {
+          window.history.replaceState({}, "", "/login");
+        }
+      }, 2000);
+    } catch (err) {
+      setError(err?.message || "Failed to update password.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="login-shell">
       <div className="login-card">
@@ -3203,8 +3737,20 @@ function LoginPage({ onLoginSuccess }) {
             </div>
             <span>Diamond Finance</span>
           </div>
-          <h1>Sign in to Diamond Finance</h1>
-          <p>Enter your authorized credentials to access your finance workspace.</p>
+          <h1>
+            {mode === "login"
+              ? "Sign in to Diamond Finance"
+              : mode === "forgot"
+              ? "Reset your password"
+              : "Set new password"}
+          </h1>
+          <p>
+            {mode === "login"
+              ? "Enter your authorized credentials to access your finance workspace."
+              : mode === "forgot"
+              ? "Enter your account email to receive a secure password reset link."
+              : "Create a secure new password for your account."}
+          </p>
         </div>
 
         {error && (
@@ -3214,59 +3760,192 @@ function LoginPage({ onLoginSuccess }) {
           </div>
         )}
 
-        <form className="login-form" onSubmit={handleSubmit} noValidate>
-          <div className="login-field">
-            <label htmlFor="login-email">Email address</label>
-            <input
-              id="login-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="e.g. user@diamondfinance.com"
-              autoComplete="email"
-              required
-              disabled={loading}
-            />
+        {successNotice && (
+          <div className="notice" style={{ display: "flex", alignItems: "flex-start", gap: "8px", margin: 0 }}>
+            <CheckCircle2 size={16} color="var(--green)" style={{ flexShrink: 0, marginTop: "1px" }} />
+            <span style={{ fontSize: "12px", lineHeight: "1.4" }}>{successNotice}</span>
           </div>
+        )}
 
-          <div className="login-field">
-            <label htmlFor="login-password">Password</label>
-            <div className="login-password-wrap">
+        {mode === "login" && (
+          <form className="login-form" onSubmit={handleLoginSubmit} noValidate>
+            <div className="login-field">
+              <label htmlFor="login-email">Email address</label>
               <input
-                id="login-password"
-                type={showPassword ? "text" : "password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                autoComplete="current-password"
+                id="login-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="e.g. heyhkchag@gmail.com"
+                autoComplete="email"
                 required
                 disabled={loading}
               />
-              <button
-                type="button"
-                className="password-toggle-btn"
-                onClick={() => setShowPassword(!showPassword)}
-                aria-label={showPassword ? "Hide password" : "Show password"}
-                tabIndex={-1}
-              >
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
             </div>
-          </div>
 
-          <button
-            type="submit"
-            className="login-submit-btn"
-            disabled={loading}
-            aria-busy={loading}
-          >
-            {loading ? (
-              <span>Signing in...</span>
-            ) : (
-              <span>Sign In</span>
-            )}
-          </button>
-        </form>
+            <div className="login-field">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <label htmlFor="login-password">Password</label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode("forgot");
+                    setError("");
+                    setSuccessNotice("");
+                  }}
+                  style={{
+                    fontSize: "11px",
+                    color: "var(--blue)",
+                    fontWeight: 600,
+                    padding: 0,
+                  }}
+                >
+                  Forgot password?
+                </button>
+              </div>
+              <div className="login-password-wrap">
+                <input
+                  id="login-password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  required
+                  disabled={loading}
+                />
+                <button
+                  type="button"
+                  className="password-toggle-btn"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              className="login-submit-btn"
+              disabled={loading}
+              aria-busy={loading}
+            >
+              {loading ? <span>Signing in...</span> : <span>Sign In</span>}
+            </button>
+          </form>
+        )}
+
+        {mode === "forgot" && (
+          <form className="login-form" onSubmit={handleForgotPasswordSubmit} noValidate>
+            <div className="login-field">
+              <label htmlFor="forgot-email">Account email address</label>
+              <input
+                id="forgot-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="e.g. heyhkchag@gmail.com"
+                autoComplete="email"
+                required
+                disabled={loading}
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="login-submit-btn"
+              disabled={loading}
+              aria-busy={loading}
+            >
+              {loading ? <span>Sending Reset Link...</span> : <span>Send Reset Link</span>}
+            </button>
+
+            <button
+              type="button"
+              className="button secondary"
+              style={{ width: "100%", justifyContent: "center" }}
+              onClick={() => {
+                setMode("login");
+                setError("");
+                setSuccessNotice("");
+              }}
+              disabled={loading}
+            >
+              Back to Sign In
+            </button>
+          </form>
+        )}
+
+        {mode === "reset" && (
+          <form className="login-form" onSubmit={handleResetPasswordSubmit} noValidate>
+            <div className="login-field">
+              <label htmlFor="reset-new-password">New Password</label>
+              <div className="login-password-wrap">
+                <input
+                  id="reset-new-password"
+                  type={showNewPassword ? "text" : "password"}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Minimum 6 characters"
+                  autoComplete="new-password"
+                  required
+                  disabled={loading}
+                />
+                <button
+                  type="button"
+                  className="password-toggle-btn"
+                  onClick={() => setShowNewPassword(!showNewPassword)}
+                  aria-label={showNewPassword ? "Hide password" : "Show password"}
+                  tabIndex={-1}
+                >
+                  {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+
+            <div className="login-field">
+              <label htmlFor="reset-confirm-password">Confirm New Password</label>
+              <input
+                id="reset-confirm-password"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Re-enter new password"
+                autoComplete="new-password"
+                required
+                disabled={loading}
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="login-submit-btn"
+              disabled={loading}
+              aria-busy={loading}
+            >
+              {loading ? <span>Updating Password...</span> : <span>Save New Password</span>}
+            </button>
+
+            <button
+              type="button"
+              className="button secondary"
+              style={{ width: "100%", justifyContent: "center" }}
+              onClick={() => {
+                setMode("login");
+                setError("");
+                setSuccessNotice("");
+                if (typeof window !== "undefined") {
+                  window.history.replaceState({}, "", "/login");
+                }
+              }}
+              disabled={loading}
+            >
+              Back to Sign In
+            </button>
+          </form>
+        )}
 
         <div className="login-security-note">
           <Lock size={12} />

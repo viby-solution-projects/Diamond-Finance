@@ -258,6 +258,46 @@ export function supabaseRepository() {
       }
     },
 
+    async updateTransaction(id, trx) {
+      if (!isSupabaseConfigured || !supabase) return;
+      const updates = {};
+      if (trx.name !== undefined) updates.name = trx.name;
+      if (trx.dealerId !== undefined || trx.sellerId !== undefined) {
+        updates.dealer_id = trx.dealerId || trx.sellerId;
+        updates.seller_id = trx.sellerId || trx.dealerId;
+      }
+      if (trx.buyerId !== undefined) updates.buyer_id = trx.buyerId;
+      if (trx.date !== undefined) updates.date = trx.date;
+      if (trx.diamondCarat !== undefined) updates.diamond_carat = trx.diamondCarat;
+      if (trx.perCaratRate !== undefined) updates.per_carat_rate = trx.perCaratRate;
+      if (trx.totalRate !== undefined) updates.total_rate = trx.totalRate;
+      if (trx.amount !== undefined) updates.amount = trx.amount;
+      if (trx.terms !== undefined) updates.terms = trx.terms;
+      if (trx.dueDays !== undefined) updates.due_days = trx.dueDays;
+      if (trx.sellType !== undefined) updates.sell_type = trx.sellType;
+      if (trx.otherSellType !== undefined) updates.other_sell_type = trx.otherSellType;
+      if (trx.brokerageRate !== undefined) updates.brokerage_rate = trx.brokerageRate;
+      if (trx.brokerageEarned !== undefined) updates.brokerage_earned = trx.brokerageEarned;
+      if (trx.status !== undefined) updates.status = trx.status;
+      if (trx.paymentMethod !== undefined) updates.payment_method = trx.paymentMethod;
+      if (trx.notes !== undefined) updates.notes = trx.notes;
+
+      const { error } = await supabase.from('transactions').update(updates).eq('id', id);
+      if (error) {
+        console.error('Supabase updateTransaction error:', error);
+        throw new Error('Unable to update transaction. Please try again.');
+      }
+    },
+
+    async deleteTransaction(id) {
+      if (!isSupabaseConfigured || !supabase) return;
+      const { error } = await supabase.from('transactions').delete().eq('id', id);
+      if (error) {
+        console.error('Supabase deleteTransaction error:', error);
+        throw new Error('Unable to delete transaction. Please try again.');
+      }
+    },
+
     async insertPayment(payment) {
       if (!isSupabaseConfigured || !supabase) return;
       const { error } = await supabase.from('payments').insert({
