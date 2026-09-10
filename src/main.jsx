@@ -31,6 +31,10 @@ import {
   Eye,
   EyeOff,
   Lock,
+  Sun,
+  Moon,
+  Receipt,
+  Layers,
 } from "lucide-react";
 import "./styles.css";
 import {
@@ -49,6 +53,10 @@ import {
   money,
   formatChartAmount,
   calculateAnalytics,
+  calculateDailyFinanceSummaries,
+  getCategoryColor,
+  EXPENSE_CATEGORIES,
+  MULTICOLOR_PALETTE,
   nextId,
   saveSettings,
   transactionRows,
@@ -59,6 +67,7 @@ const navItems = [
   { label: "Deals", icon: CircleDollarSign, path: "/transactions" },
   { label: "Dealers", icon: Users, path: "/dealers" },
   { label: "Payments", icon: CreditCard, path: "/payments" },
+  { label: "Daily Finance", icon: CalendarDays, path: "/daily-finance" },
   { label: "Analytics", icon: FileBarChart, path: "/analytics" },
   { label: "Bookkeeping", icon: Wallet, path: "/bookkeeping" },
   { label: "Settings", icon: Settings, path: "/settings" },
@@ -79,6 +88,7 @@ function routeName() {
   if (path === "/dealers") return "Dealers";
   if (path === "/dealer-profile") return "Dealer Profile";
   if (path === "/payments") return "Payments";
+  if (path === "/daily-finance" || path === "/expenses" || path === "/daily-finance-tracker") return "Daily Finance";
   if (path === "/analytics" || path === "/reports" || path === "/earnings") return "Analytics";
   if (path === "/bookkeeping") return "Bookkeeping";
   if (path === "/settings") return "Settings";
@@ -126,7 +136,24 @@ function App() {
   const [current, setCurrent] = useState(routeName());
   const [drawer, setDrawer] = useState(false);
   const [menu, setMenu] = useState(null);
-  const [data, setData] = useState({ transactions: [], dealers: [], payments: [], bookkeeping: [] });
+  const [theme, setTheme] = useState(() => {
+    try {
+      const savedTheme = localStorage.getItem("diamond-finance-theme");
+      if (savedTheme === "dark" || savedTheme === "light") return savedTheme;
+      const settings = loadSettings();
+      return settings.theme || "light";
+    } catch {
+      return "light";
+    }
+  });
+
+  const [data, setData] = useState({
+    transactions: [],
+    dealers: [],
+    payments: [],
+    bookkeeping: [],
+    dailyExpenses: [],
+  });
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -135,6 +162,21 @@ function App() {
   const profileMenuRef = useRef(null);
 
   const supabaseRepo = supabaseRepository();
+
+  // Apply theme attributes dynamically
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    document.body.setAttribute("data-theme", theme);
+    try {
+      localStorage.setItem("diamond-finance-theme", theme);
+    } catch (e) {
+      console.warn("Theme storage notice:", e);
+    }
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === "dark" ? "light" : "dark"));
+  };
 
   useEffect(() => {
     const handleLocationChange = () => {
@@ -163,7 +205,7 @@ function App() {
         if (event === "SIGNED_OUT" || !session?.user) {
           setUser(null);
           setProfile(null);
-          setData({ transactions: [], dealers: [], payments: [], bookkeeping: [] });
+          setData({ transactions: [], dealers: [], payments: [], bookkeeping: [], dailyExpenses: [] });
           if (window.location.pathname !== "/login") {
             navigate("/login");
           }
@@ -204,7 +246,7 @@ function App() {
     if (user?.id) {
       loadData();
     } else {
-      setData({ transactions: [], dealers: [], payments: [], bookkeeping: [] });
+      setData({ transactions: [], dealers: [], payments: [], bookkeeping: [], dailyExpenses: [] });
     }
   }, [user?.id]);
 
@@ -212,7 +254,7 @@ function App() {
     await authSignOut();
     setUser(null);
     setProfile(null);
-    setData({ transactions: [], dealers: [], payments: [], bookkeeping: [] });
+    setData({ transactions: [], dealers: [], payments: [], bookkeeping: [], dailyExpenses: [] });
     setMenu(null);
     navigate("/login");
   };
@@ -297,6 +339,31 @@ function App() {
   const deleteBookkeepingEntry = async (id) => {
     await supabaseRepo.deleteBookkeepingEntry(id);
     setData((prev) => ({ ...prev, bookkeeping: (prev.bookkeeping || []).filter((entry) => entry.id !== id) }));
+  };
+
+  // Daily Finance CRUD
+  const addDailyExpense = async (expense) => {
+    await supabaseRepo.insertDailyExpense(expense);
+    setData((prev) => ({
+      ...prev,
+      dailyExpenses: [expense, ...(prev.dailyExpenses || [])],
+    }));
+  };
+
+  const updateDailyExpense = async (id, updated) => {
+    await supabaseRepo.updateDailyExpense(id, updated);
+    setData((prev) => ({
+      ...prev,
+      dailyExpenses: (prev.dailyExpenses || []).map((e) => (e.id === id ? { ...e, ...updated } : e)),
+    }));
+  };
+
+  const deleteDailyExpense = async (id) => {
+    await supabaseRepo.deleteDailyExpense(id);
+    setData((prev) => ({
+      ...prev,
+      dailyExpenses: (prev.dailyExpenses || []).filter((e) => e.id !== id),
+    }));
   };
 
   const addDealer = async (dealer) => {
@@ -450,6 +517,9 @@ function App() {
         data,
         user,
         profile,
+        theme,
+        setTheme,
+        toggleTheme,
         setProfile,
         addTransaction,
         updateTransaction,
@@ -458,6 +528,9 @@ function App() {
         addBookkeepingEntry,
         updateBookkeepingEntry,
         deleteBookkeepingEntry,
+        addDailyExpense,
+        updateDailyExpense,
+        deleteDailyExpense,
         addDealer,
         updateDealer,
         deleteDealer,
@@ -531,6 +604,14 @@ function App() {
             </div>
             <div className="top-actions" ref={profileMenuRef}>
               <button
+                className="theme-toggle-btn"
+                onClick={toggleTheme}
+                title={`Switch to ${theme === "dark" ? "Light" : "Dark"} mode`}
+                aria-label={`Switch to ${theme === "dark" ? "Light" : "Dark"} mode`}
+              >
+                {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+              </button>
+              <button
                 className="avatar"
                 aria-label="Open profile"
                 onClick={() => setMenu(menu === "profile" ? null : "profile")}
@@ -547,11 +628,16 @@ function App() {
                 <div className="top-menu">
                   <b>{userName}</b>
                   <span style={{ fontSize: "11px", color: "var(--muted)" }}>{user?.email}</span>
+                  <div className="top-menu-divider" />
                   <button onClick={() => go("/profile")}>
                     Account / Profile
                   </button>
                   <button onClick={() => go("/settings")}>Settings</button>
-                  <button onClick={handleLogout}>Log out</button>
+                  <button onClick={toggleTheme}>
+                    {theme === "dark" ? "☀️ Light Mode" : "🌙 Dark Mode"}
+                  </button>
+                  <div className="top-menu-divider" />
+                  <button onClick={handleLogout} style={{ color: "#d04f59" }}>Log out</button>
                 </div>
               )}
             </div>
@@ -630,6 +716,7 @@ function Sidebar({ current, onNavigate, open, onClose }) {
               (item.label === "Deals" &&
                 ["Deals", "Deal Details", "New Deal", "Transactions", "Transaction Details", "New Transaction"].includes(current)) ||
               (item.label === "Dealers" && current === "Dealer Profile") ||
+              (item.label === "Daily Finance" && ["Daily Finance", "Expenses", "Daily Finance Tracker"].includes(current)) ||
               (item.label === "Analytics" && ["Reports", "Earnings"].includes(current));
             return (
               <button
@@ -663,6 +750,8 @@ function Page({ current, onNavigate }) {
     return <DealerProfile onNavigate={onNavigate} />;
   if (current === "Dealers") return <Dealers onNavigate={onNavigate} />;
   if (current === "Payments") return <Payments onNavigate={onNavigate} />;
+  if (current === "Daily Finance" || current === "Expenses" || current === "Daily Finance Tracker")
+    return <DailyFinance onNavigate={onNavigate} />;
   if (current === "Analytics" || current === "Reports" || current === "Earnings")
     return <Analytics onNavigate={onNavigate} />;
   if (current === "Bookkeeping") return <Bookkeeping onNavigate={onNavigate} />;
@@ -746,7 +835,7 @@ function Status({ children }) {
   );
 }
 
-function Stat({ label, value, change, positive = true, icon: Icon }) {
+function Stat({ label, value, icon: Icon }) {
   return (
     <div className="stat">
       <div className="stat-top">
@@ -756,12 +845,6 @@ function Stat({ label, value, change, positive = true, icon: Icon }) {
         </div>
       </div>
       <strong>{value}</strong>
-      {change ? (
-        <small className={positive ? "up" : "down"}>
-          {positive ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
-          {change} <em>vs last month</em>
-        </small>
-      ) : null}
     </div>
   );
 }
@@ -783,15 +866,21 @@ function DynamicBarChart({ chartData, yTicks = [] }) {
           ))}
         </div>
         <div className="bars" aria-label="Revenue bar chart">
-          {chartData.map((item, index) => (
-            <span
-              className={index === chartData.length - 1 ? "current" : ""}
-              style={{ height: `${item.heightPercent}%` }}
-              title={`${item.label}\nRevenue: ${money(item.value)}\nDeals: ${item.transactions || 0}`}
-              aria-label={`${item.label} Revenue ${money(item.value)}`}
-              key={item.label}
-            />
-          ))}
+          {chartData.map((item, index) => {
+            const barColor = item.color || MULTICOLOR_PALETTE[index % MULTICOLOR_PALETTE.length];
+            return (
+              <span
+                key={item.label}
+                style={{
+                  height: `${item.heightPercent}%`,
+                  backgroundColor: barColor,
+                  boxShadow: `0 2px 6px ${barColor}40`,
+                }}
+                title={`${item.label}\nRevenue: ${money(item.value)}\nDeals: ${item.transactions || 0}`}
+                aria-label={`${item.label} Revenue ${money(item.value)}`}
+              />
+            );
+          })}
         </div>
         <div className="chart-x">
           {chartData.map((item) => (
@@ -809,6 +898,14 @@ function MiniChart({ transactions, payments, period = "Monthly", monthCount = 6 
   const pay = payments && payments.length ? payments : (data?.payments || []);
   const analytics = calculateAnalytics(trx, pay, period, monthCount);
 
+  if (!analytics.hasData) {
+    return (
+      <div className="empty-state" style={{ height: "200px" }}>
+        <span>No deals recorded yet for this timeframe.</span>
+      </div>
+    );
+  }
+
   return <DynamicBarChart chartData={analytics.chartData} yTicks={analytics.yTicks} />;
 }
 
@@ -819,11 +916,10 @@ function Dashboard({ onNavigate }) {
   const greetingName = (userName || "User").split(" ")[0] || "User";
   const revenue = data.transactions.reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0);
   
-  // Calculate real pending amount from deals with pending payments
   const totalPaidSum = data.payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
   const totalRemainingSum = Math.max(0, revenue - totalPaidSum);
+  const activeDealersCount = data.dealers.filter((item) => item.status === "Active").length;
 
-  const active = data.dealers.filter((item) => item.status === "Active").length;
   return (
     <>
       <PageHeader
@@ -831,38 +927,129 @@ function Dashboard({ onNavigate }) {
         title={`Good day, ${greetingName}`}
         description="Here's what's happening with your business today."
         action={
-          <Button onClick={() => onNavigate("/new-transaction")}>
-            New deal
-          </Button>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <Button onClick={() => onNavigate("/new-transaction")} icon={Plus}>
+              New deal
+            </Button>
+            <Button secondary onClick={() => onNavigate("/daily-finance")} icon={Receipt}>
+              Daily Finance
+            </Button>
+          </div>
         }
       />
+
+      {/* DASHBOARD HERO QUICK ACTIONS */}
+      <section className="quick-actions-section">
+        <div className="quick-actions-card">
+          <div className="quick-actions-head">
+            <h3>Quick Actions</h3>
+            <span style={{ fontSize: "11px", color: "var(--muted)" }}>Fast workspace access</span>
+          </div>
+          <div className="quick-actions-grid">
+            <button
+              type="button"
+              className="quick-action-item"
+              onClick={() => onNavigate("/transactions")}
+            >
+              <div className="quick-action-icon" style={{ color: "#2563eb", background: "rgba(37,99,235,0.12)" }}>
+                <CircleDollarSign size={18} />
+              </div>
+              <span>Deals</span>
+            </button>
+
+            <button
+              type="button"
+              className="quick-action-item"
+              onClick={() => onNavigate("/dealers")}
+            >
+              <div className="quick-action-icon" style={{ color: "#7c3aed", background: "rgba(124,58,237,0.12)" }}>
+                <Users size={18} />
+              </div>
+              <span>Dealers</span>
+            </button>
+
+            <button
+              type="button"
+              className="quick-action-item"
+              onClick={() => onNavigate("/payments")}
+            >
+              <div className="quick-action-icon" style={{ color: "#10b981", background: "rgba(16,185,129,0.12)" }}>
+                <CreditCard size={18} />
+              </div>
+              <span>Payments</span>
+            </button>
+
+            <button
+              type="button"
+              className="quick-action-item"
+              onClick={() => onNavigate("/daily-finance")}
+            >
+              <div className="quick-action-icon" style={{ color: "#f97316", background: "rgba(249,115,22,0.12)" }}>
+                <CalendarDays size={18} />
+              </div>
+              <span>Daily Finance</span>
+            </button>
+
+            <button
+              type="button"
+              className="quick-action-item"
+              onClick={() => onNavigate("/analytics")}
+            >
+              <div className="quick-action-icon" style={{ color: "#06b6d4", background: "rgba(6,182,212,0.12)" }}>
+                <FileBarChart size={18} />
+              </div>
+              <span>Analytics</span>
+            </button>
+
+            <button
+              type="button"
+              className="quick-action-item"
+              onClick={() => onNavigate("/bookkeeping")}
+            >
+              <div className="quick-action-icon" style={{ color: "#0d9488", background: "rgba(13,148,136,0.12)" }}>
+                <Wallet size={18} />
+              </div>
+              <span>Bookkeeping</span>
+            </button>
+
+            <button
+              type="button"
+              className="quick-action-item"
+              onClick={() => onNavigate("/settings")}
+            >
+              <div className="quick-action-icon" style={{ color: "#64748b", background: "rgba(100,116,139,0.12)" }}>
+                <Settings size={18} />
+              </div>
+              <span>Settings</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* CORE STATS GRID */}
       <div className="stats-grid">
         <Stat
           label="Total volume"
           value={money(revenue)}
-          change="12.5%"
           icon={CircleDollarSign}
         />
         <Stat
           label="Total deals"
           value={data.transactions.length.toLocaleString()}
-          change="8.2%"
           icon={CreditCard}
         />
         <Stat
           label="Active dealers"
-          value={active}
-          change="4.6%"
+          value={activeDealersCount}
           icon={Users}
         />
         <Stat
           label="Pending payments"
           value={money(totalRemainingSum)}
-          change="2.4%"
-          positive={false}
           icon={Wallet}
         />
       </div>
+
       <div className="dashboard-grid revenue-grid">
         <Panel
           title="Revenue overview"
@@ -883,13 +1070,14 @@ function Dashboard({ onNavigate }) {
         >
           <div className="revenue-total">
             <strong>{money(revenue)}</strong>
-            <span className="up">
-              <ArrowUpRight size={13} /> 12.5%
+            <span style={{ fontSize: "12px", color: "var(--muted)" }}>
+              {data.transactions.length} total deals
             </span>
           </div>
           <MiniChart period="Monthly" monthCount={Number(revenueRange)} />
         </Panel>
       </div>
+
       <div className="dashboard-grid bottom-grid">
         <Panel
           title="Recent deals"
@@ -903,10 +1091,18 @@ function Dashboard({ onNavigate }) {
           }
           className="table-panel"
         >
-          <DealTable
-            rows={transactionRows(data).slice(0, 4)}
-            onRowClick={(id) => onNavigate("/transaction-details?id=" + id)}
-          />
+          {data.transactions.length ? (
+            <DealTable
+              rows={transactionRows(data).slice(0, 4)}
+              onRowClick={(id) => onNavigate("/transaction-details?id=" + id)}
+            />
+          ) : (
+            <div className="empty-state">
+              <Search size={20} />
+              <b>No deals yet</b>
+              <span>Create your first deal to begin tracking revenue.</span>
+            </div>
+          )}
         </Panel>
         <Panel
           title="Top dealers"
@@ -916,28 +1112,36 @@ function Dashboard({ onNavigate }) {
             </button>
           }
         >
-          <div className="dealer-list">
-            {data.dealers.slice(0, 4).map((dealer) => (
-              <div
-                className="dealer-row"
-                key={dealer.id}
-                onClick={() => onNavigate("/dealer-profile?id=" + dealer.id)}
-              >
-                <div className="dealer-avatar">{dealer.name.slice(0, 2)}</div>
-                <div>
-                  <b>{dealer.name}</b>
-                  <small>{dealer.location}</small>
+          {data.dealers.length ? (
+            <div className="dealer-list">
+              {data.dealers.slice(0, 4).map((dealer) => (
+                <div
+                  className="dealer-row"
+                  key={dealer.id}
+                  onClick={() => onNavigate("/dealer-profile?id=" + dealer.id)}
+                >
+                  <div className="dealer-avatar">{dealer.name.slice(0, 2)}</div>
+                  <div>
+                    <b>{dealer.name}</b>
+                    <small>{dealer.location}</small>
+                  </div>
+                  <strong>
+                    {money(
+                      data.transactions
+                        .filter((item) => item.dealerId === dealer.id || item.sellerId === dealer.id)
+                        .reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0),
+                    )}
+                  </strong>
                 </div>
-                <strong>
-                  {money(
-                    data.transactions
-                      .filter((item) => item.dealerId === dealer.id || item.sellerId === dealer.id)
-                      .reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0),
-                  )}
-                </strong>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <Users size={20} />
+              <b>No dealers yet</b>
+              <span>Add your diamond buyers and sellers to link transactions.</span>
+            </div>
+          )}
         </Panel>
       </div>
     </>
@@ -1036,6 +1240,519 @@ function SearchInput({ value, onChange, placeholder }) {
   );
 }
 
+/* ==============================================================================
+   NEW PAGE: DAILY FINANCE (EXPENSE TRACKER)
+   ============================================================================== */
+function DailyFinance({ onNavigate }) {
+  const { data, user, addDailyExpense, updateDailyExpense, deleteDailyExpense } = useData();
+  const [dateFilter, setDateFilter] = useState("All");
+  const [categoryFilter, setCategoryFilter] = useState("All");
+  const [specificDate, setSpecificDate] = useState("");
+  const [expenseModalOpen, setExpenseModalOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState(null);
+
+  const expenses = data.dailyExpenses || [];
+  const summaries = calculateDailyFinanceSummaries(expenses, dateFilter, categoryFilter, specificDate);
+
+  const handleOpenAdd = () => {
+    setEditingExpense(null);
+    setExpenseModalOpen(true);
+  };
+
+  const handleOpenEdit = (expense) => {
+    setEditingExpense(expense);
+    setExpenseModalOpen(true);
+  };
+
+  const handleDelete = async (expense) => {
+    if (!window.confirm(`Delete expense "${expense.category} - ${money(expense.amount)}"?`)) return;
+    try {
+      await deleteDailyExpense(expense.id);
+    } catch (err) {
+      alert(err?.message || "Failed to delete expense.");
+    }
+  };
+
+  const handleSaveExpense = async (expenseData) => {
+    if (editingExpense) {
+      await updateDailyExpense(editingExpense.id, expenseData);
+    } else {
+      const newEntry = {
+        ...expenseData,
+        id: nextId("EXP", expenses),
+        userId: user?.id,
+        createdAt: new Date().toISOString(),
+      };
+      await addDailyExpense(newEntry);
+    }
+    setExpenseModalOpen(false);
+    setEditingExpense(null);
+  };
+
+  const exportRows = summaries.filteredExpenses.map((e) => [
+    new Date(e.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
+    e.category,
+    e.description || "-",
+    e.paymentMethod,
+    money(e.amount),
+  ]);
+
+  return (
+    <>
+      <PageHeader
+        backTo="/"
+        backLabel="Back to Dashboard"
+        onNavigate={onNavigate}
+        eyebrow="Daily Business Expenses"
+        title="Daily Finance"
+        description="Track your daily business expenses."
+        action={
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <Button onClick={handleOpenAdd} icon={Plus}>
+              Add Expense
+            </Button>
+            <Button
+              secondary
+              icon={Download}
+              onClick={() =>
+                downloadCsv(
+                  "daily-expenses.csv",
+                  ["Date", "Category", "Description", "Payment Method", "Amount"],
+                  exportRows,
+                )
+              }
+            >
+              Export
+            </Button>
+          </div>
+        }
+      />
+
+      {/* SUMMARY CARDS */}
+      <div className="daily-finance-summary">
+        <div className="stat">
+          <div className="stat-top">
+            <span>Today's Expenses</span>
+            <div className="stat-icon" style={{ background: "rgba(37,99,235,0.12)", color: "#2563eb" }}>
+              <CalendarDays size={16} />
+            </div>
+          </div>
+          <strong>{money(summaries.todayTotal)}</strong>
+          <small>Recorded for today</small>
+        </div>
+
+        <div className="stat">
+          <div className="stat-top">
+            <span>This Month</span>
+            <div className="stat-icon" style={{ background: "rgba(249,115,22,0.12)", color: "#f97316" }}>
+              <Receipt size={16} />
+            </div>
+          </div>
+          <strong>{money(summaries.thisMonthTotal)}</strong>
+          <small>Current month total</small>
+        </div>
+
+        <div className="stat">
+          <div className="stat-top">
+            <span>Total Expenses</span>
+            <div className="stat-icon" style={{ background: "rgba(124,58,237,0.12)", color: "#7c3aed" }}>
+              <Wallet size={16} />
+            </div>
+          </div>
+          <strong>{money(summaries.allTimeTotal)}</strong>
+          <small>All time recorded</small>
+        </div>
+      </div>
+
+      {/* MULTICOLOR CATEGORY DISTRIBUTION */}
+      {summaries.categoryBreakdown.length > 0 && (
+        <Panel title="Expense Category Breakdown" style={{ marginBottom: "20px" }}>
+          <div className="category-dist-wrap">
+            <div className="category-stacked-bar">
+              {summaries.categoryBreakdown.map((item) => (
+                <div
+                  key={item.category}
+                  className="category-stacked-segment"
+                  style={{
+                    width: `${item.percentage}%`,
+                    backgroundColor: item.color,
+                  }}
+                  title={`${item.category}: ${money(item.amount)} (${item.percentage}%)`}
+                />
+              ))}
+            </div>
+            <div className="category-legend-grid">
+              {summaries.categoryBreakdown.map((item) => (
+                <div key={item.category} className="category-legend-item">
+                  <span className="category-legend-dot" style={{ backgroundColor: item.color }} />
+                  <b>{item.category}</b>
+                  <span>{money(item.amount)} ({item.percentage}%)</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Panel>
+      )}
+
+      {/* FILTER BAR & EXPENSE LIST */}
+      <Panel
+        title="Expense Records"
+        action={
+          <div className="panel-actions" style={{ flexWrap: "wrap" }}>
+            <div className="filter-chip-group">
+              {["All", "Today", "This Week", "This Month"].map((chip) => (
+                <button
+                  key={chip}
+                  type="button"
+                  className={`filter-chip ${dateFilter === chip ? "active" : ""}`}
+                  onClick={() => setDateFilter(chip)}
+                >
+                  {chip}
+                </button>
+              ))}
+            </div>
+
+            <select
+              className="filter"
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              aria-label="Filter category"
+            >
+              <option value="All">All Categories</option>
+              {EXPENSE_CATEGORIES.map((c) => (
+                <option key={c.name} value={c.name}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        }
+      >
+        {summaries.filteredExpenses.length ? (
+          <>
+            {/* Desktop View */}
+            <div className="table-scroll desktop-data-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Category</th>
+                    <th>Description</th>
+                    <th>Payment Method</th>
+                    <th>Amount</th>
+                    <th style={{ textAlign: "right" }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summaries.filteredExpenses.map((expense) => {
+                    const catColor = getCategoryColor(expense.category);
+                    return (
+                      <tr key={expense.id}>
+                        <td>
+                          {new Date(expense.date).toLocaleDateString("en-IN", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          })}
+                        </td>
+                        <td>
+                          <span
+                            className="category-pill"
+                            style={{
+                              color: catColor,
+                              backgroundColor: `${catColor}18`,
+                            }}
+                          >
+                            <i style={{ backgroundColor: catColor }} />
+                            {expense.category}
+                          </span>
+                        </td>
+                        <td>
+                          <b>{expense.description || "—"}</b>
+                        </td>
+                        <td>{expense.paymentMethod}</td>
+                        <td>
+                          <strong style={{ fontFamily: "Manrope", fontSize: "13px" }}>
+                            {money(expense.amount)}
+                          </strong>
+                        </td>
+                        <td>
+                          <div className="table-actions">
+                            <button
+                              type="button"
+                              className="btn-action"
+                              onClick={() => handleOpenEdit(expense)}
+                              aria-label="Edit expense"
+                            >
+                              <Pencil size={13} /> Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-action danger"
+                              onClick={() => handleDelete(expense)}
+                              aria-label="Delete expense"
+                            >
+                              <Trash2 size={13} /> Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile View */}
+            <div className="mobile-data-list">
+              {summaries.filteredExpenses.map((expense) => {
+                const catColor = getCategoryColor(expense.category);
+                return (
+                  <div key={expense.id} className="mobile-card-item">
+                    <div className="mobile-card-main">
+                      <div className="mobile-card-copy">
+                        <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: 500 }}>
+                          {new Date(expense.date).toLocaleDateString("en-IN", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          })}
+                        </span>
+                        <div style={{ marginTop: "3px" }}>
+                          <span
+                            className="category-pill"
+                            style={{
+                              color: catColor,
+                              backgroundColor: `${catColor}18`,
+                            }}
+                          >
+                            <i style={{ backgroundColor: catColor }} />
+                            {expense.category}
+                          </span>
+                        </div>
+                        {expense.description && (
+                          <b style={{ marginTop: "4px", fontSize: "13px" }}>
+                            {expense.description}
+                          </b>
+                        )}
+                      </div>
+                      <div className="mobile-card-amount">
+                        {money(expense.amount)}
+                      </div>
+                    </div>
+
+                    <div className="mobile-card-meta">
+                      <span>Method: {expense.paymentMethod}</span>
+                      <div className="mobile-card-actions">
+                        <button
+                          type="button"
+                          className="link-btn-subtle"
+                          onClick={() => handleOpenEdit(expense)}
+                        >
+                          Edit
+                        </button>
+                        <span className="dot-sep">•</span>
+                        <button
+                          type="button"
+                          className="link-btn-subtle danger"
+                          onClick={() => handleDelete(expense)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <div className="empty-state">
+            <Receipt size={24} />
+            <b>No expenses yet</b>
+            <span>Add your first expense to start tracking daily finances.</span>
+          </div>
+        )}
+      </Panel>
+
+      {/* MOBILE-FIRST ADD / EDIT EXPENSE SHEET MODAL */}
+      <AddExpenseModal
+        open={expenseModalOpen}
+        onClose={() => setExpenseModalOpen(false)}
+        expense={editingExpense}
+        onSave={handleSaveExpense}
+      />
+    </>
+  );
+}
+
+function AddExpenseModal({ open, onClose, expense, onSave }) {
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [category, setCategory] = useState("Office Expense");
+  const [amount, setAmount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("UPI");
+  const [description, setDescription] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      if (expense) {
+        setDate(expense.date || new Date().toISOString().slice(0, 10));
+        setCategory(expense.category || "Office Expense");
+        setAmount(expense.amount ? formatIndianNumber(expense.amount) : "");
+        setPaymentMethod(expense.paymentMethod || "UPI");
+        setDescription(expense.description || "");
+      } else {
+        setDate(new Date().toISOString().slice(0, 10));
+        setCategory("Office Expense");
+        setAmount("");
+        setPaymentMethod("UPI");
+        setDescription("");
+      }
+      setError("");
+      setSubmitting(false);
+    }
+  }, [open, expense]);
+
+  if (!open) return null;
+
+  const numAmount = Number(String(amount).replace(/,/g, "")) || 0;
+
+  const handleAmountChange = (e) => {
+    const raw = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+    setAmount(raw ? formatIndianNumber(raw) : "");
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!numAmount || numAmount <= 0) {
+      return setError("Please enter a valid expense amount greater than ₹0.");
+    }
+    if (!date) {
+      return setError("Please select a date.");
+    }
+
+    try {
+      setSubmitting(true);
+      await onSave({
+        date,
+        category,
+        amount: numAmount,
+        paymentMethod,
+        description: description.trim(),
+      });
+    } catch (err) {
+      setError(err?.message || "Failed to save expense.");
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="modal-card" style={{ maxWidth: "460px" }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h3>{expense ? "Edit Expense" : "Add Expense"}</h3>
+          <button className="icon-btn" onClick={onClose} aria-label="Close modal">
+            <X size={16} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body">
+            {error && <div className="login-error-banner" role="alert">{error}</div>}
+
+            {/* Fields in exact requested order */}
+            {/* 1. Date */}
+            <label className="field-group">
+              <span className="field-title">Date</span>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                required
+              />
+            </label>
+
+            {/* 2. Category */}
+            <label className="field-group">
+              <span className="field-title">Category</span>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                required
+              >
+                {EXPENSE_CATEGORIES.map((c) => (
+                  <option key={c.name} value={c.name}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {/* 3. Amount */}
+            <label className="field-group">
+              <span className="field-title">Amount</span>
+              <div className="input-with-symbol">
+                <span className="input-symbol">₹</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={amount}
+                  onChange={handleAmountChange}
+                  placeholder="e.g. 5,000"
+                  autoFocus
+                  required
+                />
+              </div>
+            </label>
+
+            {/* 4. Payment Method */}
+            <label className="field-group">
+              <span className="field-title">Payment Method</span>
+              <select
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+                required
+              >
+                <option value="UPI">UPI</option>
+                <option value="Cash">Cash</option>
+                <option value="Bank Transfer">Bank Transfer</option>
+                <option value="Cheque">Cheque</option>
+                <option value="Card">Card</option>
+                <option value="Other">Other</option>
+              </select>
+            </label>
+
+            {/* 5. Description */}
+            <label className="field-group">
+              <span className="field-title">Description / Note (Optional)</span>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Client visit, office supplies, tea/snacks..."
+                rows={2}
+              />
+            </label>
+          </div>
+
+          <div className="modal-actions">
+            <Button secondary type="button" onClick={onClose} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={submitting || !numAmount}>
+              {submitting ? "Saving..." : "Save Expense"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ==============================================================================
+   DEALS & DETAIL VIEWS
+   ============================================================================== */
 function AddDealPaymentModal({ open, onClose, deal, onPaymentSaved }) {
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
@@ -1106,39 +1823,32 @@ function AddDealPaymentModal({ open, onClose, deal, onPaymentSaved }) {
   };
 
   return (
-    <div className="payment-sheet-overlay" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="payment-sheet-card" onClick={(e) => e.stopPropagation()}>
-        <div className="payment-sheet-header">
-          <button type="button" className="payment-back-btn" onClick={onClose} aria-label="Go back">
-            <ArrowLeft size={16} />
-            <span>Back</span>
-          </button>
-          <h3 className="payment-sheet-title">Add Payment</h3>
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="modal-card" style={{ maxWidth: "440px" }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h3>Add Payment</h3>
           <button className="icon-btn" onClick={onClose} aria-label="Close modal">
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", flex: 1 }}>
-          <div className="payment-sheet-body">
-            <div className="payment-deal-info">
-              <span className="payment-deal-label">Deal</span>
-              <div className="payment-deal-name">{dealName}</div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body">
+            <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+              <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: 600, textTransform: "uppercase" }}>Deal</span>
+              <div style={{ fontSize: "16px", fontWeight: 700, color: "var(--ink)" }}>{dealName}</div>
             </div>
 
-            <div className="payment-remaining-card">
-              <span className="payment-remaining-label">Remaining amount</span>
-              <div className="payment-remaining-val">{money(remaining)}</div>
+            <div style={{ background: "var(--line-subtle)", borderRadius: "8px", padding: "12px 14px" }}>
+              <span style={{ fontSize: "11px", color: "var(--muted)" }}>Remaining balance</span>
+              <div style={{ fontSize: "20px", fontWeight: 800, fontFamily: "Manrope", color: "var(--blue)" }}>{money(remaining)}</div>
             </div>
 
-            <div className="payment-field-group">
-              <label htmlFor="payment-amount-input" className="payment-field-label">
-                Payment amount
-              </label>
-              <div className={`payment-amount-input-box ${error ? "has-error" : ""}`}>
-                <span className="payment-currency-sym">₹</span>
+            <label className="field-group">
+              <span className="field-title">Payment amount</span>
+              <div className="input-with-symbol">
+                <span className="input-symbol">₹</span>
                 <input
-                  id="payment-amount-input"
                   type="text"
                   inputMode="decimal"
                   value={amount}
@@ -1146,26 +1856,16 @@ function AddDealPaymentModal({ open, onClose, deal, onPaymentSaved }) {
                   placeholder="0"
                   autoFocus
                   required
-                  className="payment-amount-input"
                 />
               </div>
-              <div className="payment-amount-helper">Maximum {money(remaining)}</div>
-              {error && (
-                <div className="payment-inline-error" role="alert">
-                  {error}
-                </div>
-              )}
-            </div>
+              <small style={{ fontSize: "10.5px", color: "var(--muted)", marginTop: "2px" }}>Maximum {money(remaining)}</small>
+            </label>
 
-            <div className="payment-field-group">
-              <label htmlFor="payment-method-select" className="payment-field-label">
-                Payment method
-              </label>
+            <label className="field-group">
+              <span className="field-title">Payment method</span>
               <select
-                id="payment-method-select"
                 value={method}
                 onChange={(e) => setMethod(e.target.value)}
-                className="payment-control-input"
               >
                 <option value="Bank Transfer">Bank Transfer</option>
                 <option value="UPI">UPI</option>
@@ -1173,39 +1873,28 @@ function AddDealPaymentModal({ open, onClose, deal, onPaymentSaved }) {
                 <option value="Cheque">Cheque</option>
                 <option value="Other">Other</option>
               </select>
-            </div>
+            </label>
 
-            <div className="payment-field-group">
-              <label htmlFor="payment-date-input" className="payment-field-label">
-                Payment date
-              </label>
+            <label className="field-group">
+              <span className="field-title">Payment date</span>
               <input
-                id="payment-date-input"
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 required
-                className="payment-control-input"
               />
-            </div>
+            </label>
+
+            {error && <div className="login-error-banner" role="alert">{error}</div>}
           </div>
 
-          <div className="payment-sheet-actions">
-            <button
-              type="submit"
-              className="payment-submit-btn"
-              disabled={isInvalid || submitting}
-            >
-              {submitting ? "Saving..." : "Save Payment"}
-            </button>
-            <button
-              type="button"
-              className="payment-cancel-btn"
-              onClick={onClose}
-              disabled={submitting}
-            >
+          <div className="modal-actions">
+            <Button secondary type="button" onClick={onClose} disabled={submitting}>
               Cancel
-            </button>
+            </Button>
+            <Button type="submit" disabled={isInvalid || submitting}>
+              {submitting ? "Saving..." : "Save Payment"}
+            </Button>
           </div>
         </form>
       </div>
@@ -1336,7 +2025,7 @@ function Deals({ onNavigate }) {
           <div className="empty-state">
             <Search size={20} />
             <b>No deals found</b>
-            <span>Try clearing your search or filters.</span>
+            <span>{data.transactions.length ? "Try clearing your search or filters." : "Create your first deal to get started."}</span>
           </div>
         ) : (
           <>
@@ -1447,7 +2136,7 @@ function Deals({ onNavigate }) {
                       gridTemplateColumns: "1fr 1fr",
                       gap: "8px",
                       padding: "8px 10px",
-                      background: "#f8fafc",
+                      background: "var(--line-subtle)",
                       borderRadius: "6px",
                       fontSize: "11px",
                       border: "1px solid var(--line)",
@@ -1560,20 +2249,19 @@ function DealDetails({ onNavigate }) {
   const { data, updateTransaction, addPayment } = useData();
   const [editModal, setEditModal] = useState(false);
   const [paymentModal, setPaymentModal] = useState(false);
-  const id =
-    new URLSearchParams(window.location.search).get("id") ||
-    data.transactions[0]?.id;
-  const deal =
-    data.transactions.find((item) => item.id === id) || data.transactions[0];
+  const id = new URLSearchParams(window.location.search).get("id") || data.transactions[0]?.id;
+  const deal = data.transactions.find((item) => item.id === id) || data.transactions[0];
   const dealer = data.dealers.find((item) => item.id === (deal?.sellerId || deal?.dealerId));
   const buyer = data.dealers.find((item) => item.id === deal?.buyerId);
 
   if (!deal)
     return (
       <Panel title="Deal not found">
-        <Button onClick={() => onNavigate("/transactions")}>
-          Back to deals
-        </Button>
+        <div style={{ padding: "20px" }}>
+          <Button onClick={() => onNavigate("/transactions")}>
+            Back to deals
+          </Button>
+        </div>
       </Panel>
     );
 
@@ -1719,8 +2407,8 @@ function DealDetails({ onNavigate }) {
             />
           </div>
         </Panel>
-        <Panel title="Payment settlement & history" className="items-panel">
-          <div className="payment-settlement-summary" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px", padding: "18px 20px", background: "#fbfcfd", borderBottom: "1px solid var(--line)" }}>
+        <Panel title="Payment settlement & history" className="items-panel full-width-panel">
+          <div className="payment-settlement-summary" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px", padding: "18px 20px", background: "var(--line-subtle)", borderBottom: "1px solid var(--line)" }}>
             <div>
               <span style={{ fontSize: "11px", color: "var(--muted)" }}>Original Amount</span>
               <strong style={{ display: "block", fontSize: "18px", fontFamily: "Manrope", marginTop: "4px" }}>{money(originalAmount)}</strong>
@@ -1739,7 +2427,7 @@ function DealDetails({ onNavigate }) {
             {dealPayments.length ? (
               <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                 {dealPayments.map((p) => (
-                  <div key={p.id} className="item-row" style={{ margin: 0, padding: "12px 14px", border: "1px solid var(--line)", borderRadius: "8px", background: "#fff" }}>
+                  <div key={p.id} className="item-row" style={{ margin: 0, padding: "12px 14px", border: "1px solid var(--line)", borderRadius: "8px", background: "var(--panel)" }}>
                     <div className="gem-icon">
                       <Check size={16} />
                     </div>
@@ -1964,7 +2652,7 @@ function EditDealModal({ open, onClose, transaction, onSave }) {
         </div>
         <form onSubmit={submit}>
           <div className="modal-body">
-            {error && <div className="form-error">{error}</div>}
+            {error && <div className="login-error-banner">{error}</div>}
             <div className="form-grid" style={{ padding: 0 }}>
               <label className="field-group">
                 <span className="field-title">Deal Name</span>
@@ -2320,7 +3008,7 @@ function NewDeal({ onNavigate }) {
     const finalNet = Math.round((amountAfterTerms - cvd) * 100) / 100;
     const earned = Math.round(((totalRate * (Number.isFinite(brokerageRate) ? brokerageRate : 5)) / 100) * 100) / 100;
 
-    const deal = {
+    const newDealItem = {
       id: nextId("TRX", data.transactions),
       name: form.name.trim(),
       date: form.date,
@@ -2346,10 +3034,10 @@ function NewDeal({ onNavigate }) {
       status: form.status || "Pending",
     };
 
-    setSubmitting(true);
     try {
-      await addTransaction(deal);
-      onNavigate("/transaction-details?id=" + deal.id);
+      setSubmitting(true);
+      await addTransaction(newDealItem);
+      onNavigate("/transactions");
     } catch (err) {
       setError(err?.message || "Failed to create deal.");
     } finally {
@@ -2363,12 +3051,12 @@ function NewDeal({ onNavigate }) {
         backTo="/transactions"
         backLabel="Back to Deals"
         onNavigate={onNavigate}
-        eyebrow="Deals"
+        eyebrow="Create"
         title="New deal"
-        description="Add a new diamond deal to your records."
+        description="Record a new diamond sale or purchase deal."
       />
       <form className="grouped-form" onSubmit={submit}>
-        <Panel title="Deal details" className="form-panel">
+        <Panel title="Deal information" className="form-panel">
           <div className="form-grid">
             <label className="field-group">
               <span className="field-title">Deal Name</span>
@@ -2380,7 +3068,6 @@ function NewDeal({ onNavigate }) {
                 required
               />
             </label>
-
             <label className="field-group">
               <span className="field-title">Deal Date</span>
               <input
@@ -2391,7 +3078,6 @@ function NewDeal({ onNavigate }) {
                 required
               />
             </label>
-
             <label className="field-group">
               <span className="field-title">Diamond Carat</span>
               <input
@@ -2406,16 +3092,12 @@ function NewDeal({ onNavigate }) {
                   if (parts.length > 1) {
                     clean = parts[0] + "." + parts.slice(1).join("").slice(0, 2);
                   }
-                  setForm((previous) => ({
-                    ...previous,
-                    diamondCarat: clean,
-                  }));
+                  setForm((p) => ({ ...p, diamondCarat: clean }));
                 }}
                 placeholder="e.g. 10.50"
                 required
               />
             </label>
-
             <label className="field-group">
               <span className="field-title">Per Carat Rate</span>
               <div className="input-with-symbol">
@@ -2429,8 +3111,8 @@ function NewDeal({ onNavigate }) {
                     const raw = event.target.value
                       .replace(/[^0-9.]/g, "")
                       .replace(/(\..*)\./g, "$1");
-                    setForm((previous) => ({
-                      ...previous,
+                    setForm((p) => ({
+                      ...p,
                       perCaratRate: raw ? formatIndianNumber(raw) : "",
                     }));
                   }}
@@ -2439,7 +3121,6 @@ function NewDeal({ onNavigate }) {
                 />
               </div>
             </label>
-
             <div className="field-group calculated-cell">
               <div className="calculated-field-card">
                 <div className="calc-header">
@@ -2450,7 +3131,6 @@ function NewDeal({ onNavigate }) {
                 <span className="calc-formula">Carat × Per Carat Rate</span>
               </div>
             </div>
-
             <label className="field-group">
               <span className="field-title">Terms (%)</span>
               <input
@@ -2459,8 +3139,8 @@ function NewDeal({ onNavigate }) {
                 inputMode="decimal"
                 value={form.terms}
                 onChange={(event) =>
-                  setForm((previous) => ({
-                    ...previous,
+                  setForm((p) => ({
+                    ...p,
                     terms: event.target.value
                       .replace(/[^0-9.]/g, "")
                       .replace(/(\..*)\./g, "$1"),
@@ -2470,7 +3150,6 @@ function NewDeal({ onNavigate }) {
                 required
               />
             </label>
-
             <label className="field-group">
               <span className="field-title">Due Days</span>
               <input
@@ -2479,8 +3158,8 @@ function NewDeal({ onNavigate }) {
                 inputMode="numeric"
                 value={form.dueDays}
                 onChange={(event) =>
-                  setForm((previous) => ({
-                    ...previous,
+                  setForm((p) => ({
+                    ...p,
                     dueDays: event.target.value.replace(/[^0-9]/g, ""),
                   }))
                 }
@@ -2508,7 +3187,6 @@ function NewDeal({ onNavigate }) {
                 />
               </div>
             </label>
-
             <div className="field-group">
               <span className="field-title">Sell Type</span>
               <div className="segmented-control" role="radiogroup" aria-label="Sell Type">
@@ -2547,92 +3225,24 @@ function NewDeal({ onNavigate }) {
                 </div>
               )}
             </div>
-
-            <label className="field-group full">
-              <span className="field-title">Description</span>
-              <textarea
-                name="notes"
-                value={form.notes}
-                onChange={set}
-                placeholder="Enter a description..."
-              />
-            </label>
-          </div>
-        </Panel>
-
-        <Panel title="Amount Summary" className="form-panel amount-summary-panel">
-          <div className="amount-summary-card">
-            <div className="summary-row">
-              <div className="summary-label">
-                <span>Total Rate</span>
-                <small className="summary-hint">Carat × Per Carat Rate</small>
-              </div>
-              <div className="summary-value">{money(totalRateValue)}</div>
-            </div>
-
-            <div className="summary-row">
-              <div className="summary-label">
-                <span>Terms ({termsPercentValue}%)</span>
-                <small className="summary-hint">Deduction</small>
-              </div>
-              <div className="summary-value deduction">
-                {termsAmountValue > 0 ? `-${money(termsAmountValue)}` : money(0)}
-              </div>
-            </div>
-
-            <div className="summary-row">
-              <div className="summary-label">
-                <span>Amount After Terms</span>
-                <small className="summary-hint">Total Rate − Terms</small>
-              </div>
-              <div className="summary-value">{money(amountAfterTermsValue)}</div>
-            </div>
-
-            <div className="summary-row cvd-row">
-              <div className="summary-label">
-                <span className="cvd-label-text">CVD</span>
-              </div>
-              <div className="summary-value deduction">{cvdValue > 0 ? `-${money(cvdValue)}` : money(0)}</div>
-            </div>
-
-            <div className="summary-divider" />
-
-            <div className="summary-row final-net-row">
-              <div className="summary-label">
-                <span className="final-net-title">Final Net</span>
-                <small className="summary-hint">Amount After Terms − CVD</small>
-              </div>
-              <div className="final-net-value">{money(finalNetValue)}</div>
-            </div>
-          </div>
-        </Panel>
-
-        <Panel title="Parties involved" className="form-panel">
-          <div className="party-flow">
             <label className="field-group">
               <span className="field-title">Seller</span>
               <select name="sellerId" value={form.sellerId} onChange={set} required>
-                <option value="">Select seller dealer</option>
-                {sellerDealers.map((dealer) => (
-                  <option key={dealer.id} value={dealer.id}>{dealer.name}</option>
+                <option value="">Select seller</option>
+                {sellerDealers.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
                 ))}
               </select>
             </label>
-            <div className="party-connector" aria-hidden="true"><span>→</span><b>BROKERAGE</b><span>→</span></div>
             <label className="field-group">
               <span className="field-title">Buyer</span>
               <select name="buyerId" value={form.buyerId} onChange={set} required>
-                <option value="">Select buyer dealer</option>
-                {buyerDealers.map((dealer) => (
-                  <option key={dealer.id} value={dealer.id}>{dealer.name}</option>
+                <option value="">Select buyer</option>
+                {buyerDealers.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
                 ))}
               </select>
             </label>
-          </div>
-        </Panel>
-
-        <Panel title="Brokerage" className="form-panel">
-          <div className="form-grid">
             <label className="field-group">
               <span className="field-title">Brokerage (%)</span>
               <input
@@ -2641,8 +3251,8 @@ function NewDeal({ onNavigate }) {
                 inputMode="decimal"
                 value={form.brokerageRate}
                 onChange={(event) =>
-                  setForm((previous) => ({
-                    ...previous,
+                  setForm((p) => ({
+                    ...p,
                     brokerageRate: event.target.value
                       .replace(/[^0-9.]/g, "")
                       .replace(/(\..*)\./g, "$1"),
@@ -2656,19 +3266,6 @@ function NewDeal({ onNavigate }) {
               <span>Brokerage earned</span>
               <strong>{money(brokerageEarned)}</strong>
             </div>
-            <label className="field-group full">
-              <span className="field-title">Payment method</span>
-              <select name="paymentMethod" value={form.paymentMethod} onChange={set}>
-                <option>Bank transfer</option>
-                <option>Credit card</option>
-                <option>Cash</option>
-              </select>
-            </label>
-          </div>
-        </Panel>
-
-        <Panel title="Deal status" className="form-panel">
-          <div className="form-grid">
             <label className="field-group">
               <span className="field-title">Status</span>
               <select name="status" value={form.status} onChange={set} required>
@@ -2677,11 +3274,28 @@ function NewDeal({ onNavigate }) {
                 <option>Completed</option>
               </select>
             </label>
+            <label className="field-group">
+              <span className="field-title">Payment method</span>
+              <select name="paymentMethod" value={form.paymentMethod} onChange={set}>
+                <option>Bank transfer</option>
+                <option>Credit card</option>
+                <option>Cash</option>
+              </select>
+            </label>
+            <label className="field-group full">
+              <span className="field-title">Description</span>
+              <textarea
+                name="notes"
+                value={form.notes}
+                onChange={set}
+                placeholder="Enter a description..."
+              />
+            </label>
           </div>
         </Panel>
 
         {error && (
-          <div className="form-error" role="alert">
+          <div className="login-error-banner" role="alert">
             {error}
           </div>
         )}
@@ -2696,330 +3310,6 @@ function NewDeal({ onNavigate }) {
         </div>
       </form>
     </>
-  );
-}
-
-function DealerProfile({ onNavigate }) {
-  const { data, updateDealer } = useData();
-  const [editModal, setEditModal] = useState(false);
-  const id =
-    new URLSearchParams(window.location.search).get("id") || data.dealers[0]?.id || "dealer-abc";
-  const dealer = data.dealers.find((item) => item.id === id) || data.dealers[0];
-  const dealerTransactions = dealer
-    ? data.transactions.filter(
-        (item) => item.dealerId === dealer.id || item.sellerId === dealer.id,
-      )
-    : [];
-
-  if (!dealer) {
-    return (
-      <Panel title="Dealer not found">
-        <div style={{ padding: "20px" }}>
-          <Button onClick={() => onNavigate("/dealers")}>Back to dealers</Button>
-        </div>
-      </Panel>
-    );
-  }
-
-  return (
-    <>
-      <PageHeader
-        backTo="/dealers"
-        backLabel="Back to Dealers"
-        onNavigate={onNavigate}
-        eyebrow="Dealers"
-        title={dealer.name}
-        description="Dealer profile and deal history."
-        action={
-          <div className="header-actions">
-            <Button secondary onClick={() => setEditModal(true)} icon={Pencil}>
-              Edit dealer
-            </Button>
-            <Button
-              secondary
-              onClick={() =>
-                downloadCsv(
-                  `${dealer.id}-deals.csv`,
-                  ["Deal ID", "Dealer", "Date", "Amount", "Status"],
-                  transactionRows({
-                    ...data,
-                    transactions: dealerTransactions,
-                  }).map((row) => row.slice(0, 5)),
-                )
-              }
-              icon={Download}
-            >
-              Export history
-            </Button>
-          </div>
-        }
-      />
-      <Panel className="dealer-profile-head">
-        <div className="profile-card">
-          <div className="dealer-avatar profile">{dealer.name.slice(0, 2)}</div>
-          <div>
-            <h2>{dealer.name}</h2>
-            <small>
-              {dealer.location}
-              {dealer.phone ? ` • ${dealer.phone}` : ""}
-              {dealer.email ? ` • ${dealer.email}` : ""}
-            </small>
-            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "6px" }}>
-              <span className="dealer-role-tag">{dealerTypeLabel(dealer.type)}</span>
-              <Status>{dealer.status}</Status>
-            </div>
-          </div>
-        </div>
-        <button
-          className="link-btn"
-          onClick={() => onNavigate("/transactions")}
-        >
-          View all deals <ArrowUpRight size={14} />
-        </button>
-      </Panel>
-      <div className="stats-grid three">
-        <Stat
-          label="Total deals"
-          value={dealerTransactions.length}
-          change="12.5%"
-          icon={CreditCard}
-        />
-        <Stat
-          label="Total volume"
-          value={money(
-            dealerTransactions.reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0),
-          )}
-          change="8.2%"
-          icon={CircleDollarSign}
-        />
-        <Stat
-          label="Avg. deal volume"
-          value={money(
-            dealerTransactions.length
-              ? dealerTransactions.reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0) /
-                  dealerTransactions.length
-              : 0,
-          )}
-          change="3.1%"
-          icon={BarChart3}
-        />
-      </div>
-      <Panel title="Deal history">
-        <DealTable
-          rows={transactionRows({ ...data, transactions: dealerTransactions })}
-          onRowClick={(rowId) => onNavigate("/transaction-details?id=" + rowId)}
-        />
-      </Panel>
-
-      <DealerModal
-        open={editModal}
-        onClose={() => setEditModal(false)}
-        dealer={dealer}
-        onSave={(updated) => updateDealer(dealer.id, updated)}
-      />
-    </>
-  );
-}
-
-function DealerModal({ open, onClose, dealer, onSave }) {
-  const [form, setForm] = useState({
-    name: "",
-    location: "",
-    type: "both",
-    phone: "",
-    email: "",
-    status: "Active",
-  });
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (dealer && dealer.id) {
-      setForm({
-        name: dealer.name || "",
-        location: dealer.location || "",
-        type: dealer.type || "both",
-        phone: dealer.phone || "",
-        email: dealer.email || "",
-        status: dealer.status || "Active",
-      });
-    } else {
-      setForm({
-        name: "",
-        location: "",
-        type: "both",
-        phone: "",
-        email: "",
-        status: "Active",
-      });
-    }
-    setError("");
-  }, [dealer, open]);
-
-  if (!open) return null;
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!form.name.trim()) return setError("Please enter a dealer name.");
-    if (!form.location.trim()) return setError("Please enter a location.");
-
-    onSave({
-      name: form.name.trim(),
-      location: form.location.trim(),
-      type: form.type || "both",
-      phone: form.phone.trim(),
-      email: form.email.trim(),
-      status: form.status,
-    });
-    onClose();
-  };
-
-  const isEdit = Boolean(dealer && dealer.id);
-
-  return (
-    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <h3>{isEdit ? "Edit dealer" : "Add dealer"}</h3>
-          <button className="icon-btn" onClick={onClose} aria-label="Close modal">
-            <X size={16} />
-          </button>
-        </div>
-        <form onSubmit={handleSubmit}>
-          <div className="modal-body">
-            {error && <div className="form-error">{error}</div>}
-            <label className="field-group">
-              <span className="field-title">Dealer Name</span>
-              <input
-                value={form.name}
-                onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-                placeholder="e.g. ABC Diamonds"
-                required
-              />
-            </label>
-            <label className="field-group">
-              <span className="field-title">Location</span>
-              <input
-                value={form.location}
-                onChange={(e) => setForm((p) => ({ ...p, location: e.target.value }))}
-                placeholder="e.g. Mumbai, India"
-                required
-              />
-            </label>
-            <div className="field-group">
-              <span className="field-title">Dealer Type</span>
-              <div className="segmented-control" role="radiogroup" aria-label="Dealer Type">
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={form.type === "buyer"}
-                  className={`segmented-btn ${form.type === "buyer" ? "active" : ""}`}
-                  onClick={() => setForm((p) => ({ ...p, type: "buyer" }))}
-                >
-                  Buyer
-                </button>
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={form.type === "seller"}
-                  className={`segmented-btn ${form.type === "seller" ? "active" : ""}`}
-                  onClick={() => setForm((p) => ({ ...p, type: "seller" }))}
-                >
-                  Seller
-                </button>
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={form.type === "both"}
-                  className={`segmented-btn ${form.type === "both" ? "active" : ""}`}
-                  onClick={() => setForm((p) => ({ ...p, type: "both" }))}
-                >
-                  Both
-                </button>
-              </div>
-            </div>
-            <label className="field-group">
-              <span className="field-title">Phone (Optional)</span>
-              <input
-                value={form.phone}
-                onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
-                placeholder="+91 22 5550 0198"
-              />
-            </label>
-            <label className="field-group">
-              <span className="field-title">Email (Optional)</span>
-              <input
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
-                placeholder="alex@abcdiamonds.com"
-              />
-            </label>
-            {isEdit && (
-              <label className="field-group">
-                <span className="field-title">Status</span>
-                <select
-                  value={form.status}
-                  onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}
-                >
-                  <option value="Active">Active</option>
-                  <option value="Inactive">Inactive</option>
-                </select>
-              </label>
-            )}
-          </div>
-          <div className="modal-actions">
-            <Button secondary type="button" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit">
-              {isEdit ? "Save changes" : "Add Dealer"}
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function DeleteDealerModal({ dealer, onClose, onConfirm, isUsed }) {
-  if (!dealer) return null;
-
-  return (
-    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <h3>Remove {dealer.name}?</h3>
-          <button className="icon-btn" onClick={onClose} aria-label="Close modal">
-            <X size={16} />
-          </button>
-        </div>
-        <div className="modal-body">
-          {isUsed ? (
-            <div className="delete-warning-box">
-              This dealer is linked to an existing deal or payment record.
-            </div>
-          ) : (
-            <p className="delete-confirm-text">
-              Are you sure you want to remove <b>{dealer.name}</b>?
-            </p>
-          )}
-        </div>
-        <div className="modal-actions">
-          <Button secondary type="button" onClick={onClose}>
-            Cancel
-          </Button>
-          {!isUsed && (
-            <button
-              type="button"
-              className="button danger"
-              onClick={() => onConfirm(dealer.id)}
-            >
-              Remove
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -3082,13 +3372,11 @@ function Dealers({ onNavigate }) {
         <Stat
           label="Total dealers"
           value={data.dealers.length}
-          change="6.4%"
           icon={Users}
         />
         <Stat
           label="Active dealers"
           value={data.dealers.filter((item) => item.status === "Active").length}
-          change="4.6%"
           icon={Store}
         />
         <Stat
@@ -3096,7 +3384,6 @@ function Dealers({ onNavigate }) {
           value={money(
             data.transactions.reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0),
           )}
-          change="14.8%"
           icon={CircleDollarSign}
         />
       </div>
@@ -3262,7 +3549,7 @@ function Dealers({ onNavigate }) {
           <div className="empty-state">
             <Search size={20} />
             <b>No dealers found</b>
-            <span>Try adding a new dealer or a different search term.</span>
+            <span>{data.dealers.length ? "Try a different search term or filter." : "Add your first dealer to get started."}</span>
           </div>
         )}
       </Panel>
@@ -3284,11 +3571,313 @@ function Dealers({ onNavigate }) {
   );
 }
 
+function DealerProfile({ onNavigate }) {
+  const { data, updateDealer } = useData();
+  const [editModal, setEditModal] = useState(false);
+  const id = new URLSearchParams(window.location.search).get("id") || data.dealers[0]?.id;
+  const dealer = data.dealers.find((item) => item.id === id) || data.dealers[0];
+  const dealerTransactions = dealer
+    ? data.transactions.filter(
+        (item) => item.dealerId === dealer.id || item.sellerId === dealer.id,
+      )
+    : [];
+
+  if (!dealer) {
+    return (
+      <Panel title="Dealer not found">
+        <div style={{ padding: "20px" }}>
+          <Button onClick={() => onNavigate("/dealers")}>Back to dealers</Button>
+        </div>
+      </Panel>
+    );
+  }
+
+  return (
+    <>
+      <PageHeader
+        backTo="/dealers"
+        backLabel="Back to Dealers"
+        onNavigate={onNavigate}
+        eyebrow="Dealers"
+        title={dealer.name}
+        description="Dealer profile and deal history."
+        action={
+          <div className="header-actions">
+            <Button secondary onClick={() => setEditModal(true)} icon={Pencil}>
+              Edit dealer
+            </Button>
+            <Button
+              secondary
+              onClick={() =>
+                downloadCsv(
+                  `${dealer.id}-deals.csv`,
+                  ["Deal ID", "Dealer", "Date", "Amount", "Status"],
+                  transactionRows({
+                    ...data,
+                    transactions: dealerTransactions,
+                  }).map((row) => row.slice(0, 5)),
+                )
+              }
+              icon={Download}
+            >
+              Export history
+            </Button>
+          </div>
+        }
+      />
+      <Panel className="dealer-profile-head">
+        <div className="profile-card">
+          <div className="dealer-avatar profile">{dealer.name.slice(0, 2)}</div>
+          <div>
+            <h2>{dealer.name}</h2>
+            <small>
+              {dealer.location}
+              {dealer.phone ? ` • ${dealer.phone}` : ""}
+              {dealer.email ? ` • ${dealer.email}` : ""}
+            </small>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "6px" }}>
+              <span className="dealer-role-tag">{dealerTypeLabel(dealer.type)}</span>
+              <Status>{dealer.status}</Status>
+            </div>
+          </div>
+        </div>
+        <button
+          className="link-btn"
+          onClick={() => onNavigate("/transactions")}
+        >
+          View all deals <ArrowUpRight size={14} />
+        </button>
+      </Panel>
+      <div className="stats-grid three">
+        <Stat
+          label="Total deals"
+          value={dealerTransactions.length}
+          icon={CreditCard}
+        />
+        <Stat
+          label="Total volume"
+          value={money(
+            dealerTransactions.reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0),
+          )}
+          icon={CircleDollarSign}
+        />
+        <Stat
+          label="Avg. deal volume"
+          value={money(
+            dealerTransactions.length
+              ? dealerTransactions.reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0) /
+                  dealerTransactions.length
+              : 0,
+          )}
+          icon={BarChart3}
+        />
+      </div>
+      <Panel title="Deal history">
+        {dealerTransactions.length ? (
+          <DealTable
+            rows={transactionRows({ ...data, transactions: dealerTransactions })}
+            onRowClick={(rowId) => onNavigate("/transaction-details?id=" + rowId)}
+          />
+        ) : (
+          <div className="empty-state">
+            <span>No deals linked to this dealer yet.</span>
+          </div>
+        )}
+      </Panel>
+
+      <DealerModal
+        open={editModal}
+        onClose={() => setEditModal(false)}
+        dealer={dealer}
+        onSave={(updated) => updateDealer(dealer.id, updated)}
+      />
+    </>
+  );
+}
+
+function DealerModal({ open, onClose, dealer, onSave }) {
+  const [form, setForm] = useState({
+    name: "",
+    location: "",
+    type: "both",
+    phone: "",
+    email: "",
+    status: "Active",
+  });
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (dealer && dealer.id) {
+      setForm({
+        name: dealer.name || "",
+        location: dealer.location || "",
+        type: dealer.type || "both",
+        phone: dealer.phone || "",
+        email: dealer.email || "",
+        status: dealer.status || "Active",
+      });
+    } else {
+      setForm({
+        name: "",
+        location: "",
+        type: "both",
+        phone: "",
+        email: "",
+        status: "Active",
+      });
+    }
+    setError("");
+  }, [dealer, open]);
+
+  if (!open) return null;
+
+  const set = (event) =>
+    setForm((previous) => ({
+      ...previous,
+      [event.target.name]: event.target.value,
+    }));
+
+  const submit = (event) => {
+    event.preventDefault();
+    if (!form.name.trim()) return setError("Please enter a dealer name.");
+    if (!form.location.trim()) return setError("Please enter a dealer location.");
+
+    onSave({
+      ...form,
+      name: form.name.trim(),
+      location: form.location.trim(),
+      phone: form.phone.trim(),
+      email: form.email.trim(),
+    });
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h3>{dealer?.id ? "Edit Dealer" : "Add Dealer"}</h3>
+          <button className="icon-btn" onClick={onClose} aria-label="Close modal">
+            <X size={16} />
+          </button>
+        </div>
+        <form onSubmit={submit}>
+          <div className="modal-body">
+            {error && <div className="login-error-banner">{error}</div>}
+            <label className="field-group">
+              <span className="field-title">Dealer Name</span>
+              <input
+                name="name"
+                value={form.name}
+                onChange={set}
+                placeholder="e.g. Surat Gems Co."
+                required
+              />
+            </label>
+            <label className="field-group">
+              <span className="field-title">Location</span>
+              <input
+                name="location"
+                value={form.location}
+                onChange={set}
+                placeholder="e.g. Surat, Gujarat"
+                required
+              />
+            </label>
+            <label className="field-group">
+              <span className="field-title">Dealer Type</span>
+              <select name="type" value={form.type} onChange={set}>
+                <option value="both">Buyer & Seller</option>
+                <option value="buyer">Buyer</option>
+                <option value="seller">Seller</option>
+              </select>
+            </label>
+            <label className="field-group">
+              <span className="field-title">Phone Number</span>
+              <input
+                name="phone"
+                value={form.phone}
+                onChange={set}
+                placeholder="+91 98765 43210"
+              />
+            </label>
+            <label className="field-group">
+              <span className="field-title">Email Address</span>
+              <input
+                name="email"
+                type="email"
+                value={form.email}
+                onChange={set}
+                placeholder="contact@dealer.com"
+              />
+            </label>
+            <label className="field-group">
+              <span className="field-title">Status</span>
+              <select name="status" value={form.status} onChange={set}>
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
+              </select>
+            </label>
+          </div>
+          <div className="modal-actions">
+            <Button secondary type="button" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit">
+              {dealer?.id ? "Save Changes" : "Create Dealer"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function DeleteDealerModal({ dealer, onClose, onConfirm, isUsed }) {
+  if (!dealer) return null;
+
+  return (
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h3>Remove Dealer</h3>
+          <button className="icon-btn" onClick={onClose} aria-label="Close modal">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="modal-body">
+          {isUsed ? (
+            <div className="delete-warning-box">
+              Cannot remove <b>{dealer.name}</b> because they are linked to recorded deals or payments.
+            </div>
+          ) : (
+            <p className="delete-confirm-text">
+              Are you sure you want to remove <b>{dealer.name}</b>?
+            </p>
+          )}
+        </div>
+        <div className="modal-actions">
+          <Button secondary type="button" onClick={onClose}>
+            Cancel
+          </Button>
+          {!isUsed && (
+            <button
+              type="button"
+              className="button danger"
+              onClick={() => onConfirm(dealer.id)}
+            >
+              Remove
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Payments({ onNavigate }) {
   const { data, addPayment } = useData();
   const [open, setOpen] = useState(false);
-  const [selectedHistoryId, setSelectedHistoryId] = useState(null);
-  const [error, setError] = useState("");
   const [filterStatus, setFilterStatus] = useState("All");
   const [form, setForm] = useState({
     transactionId: "",
@@ -3297,16 +3886,15 @@ function Payments({ onNavigate }) {
     method: "Bank transfer",
     notes: "",
   });
+  const [error, setError] = useState("");
 
-  // Calculate real deal payment aggregates
-  const dealRows = data.transactions.map((deal) => {
-    const payments = data.payments.filter((p) => p.transactionId === deal.id);
+  const dealRows = (data.transactions || []).map((deal) => {
+    const payments = (data.payments || []).filter((p) => p.transactionId === deal.id);
     const original = Number(deal.totalRate || deal.amount) || 0;
     const paid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
     const remaining = Math.max(0, original - paid);
     const status = paid <= 0 ? "Pending" : remaining <= 0 ? "Paid" : "Partially Paid";
-    const lastPayment = payments.slice().sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
-    const dealer = data.dealers.find((item) => item.id === (deal.dealerId || deal.sellerId));
+    const dealer = (data.dealers || []).find((item) => item.id === (deal.dealerId || deal.sellerId));
 
     return {
       deal,
@@ -3316,20 +3904,15 @@ function Payments({ onNavigate }) {
       paid,
       remaining,
       status,
-      lastPayment,
     };
   });
 
-  // Top summary totals calculated strictly from DB data
   const totalDue = dealRows.reduce((sum, row) => sum + row.original, 0);
   const totalPaid = dealRows.reduce((sum, row) => sum + Math.min(row.original, row.paid), 0);
   const totalRemaining = dealRows.reduce((sum, row) => sum + row.remaining, 0);
 
   const selectedDealRow = dealRows.find((row) => row.deal.id === form.transactionId);
   const paymentAmountNum = Number(String(form.amount).replace(/,/g, "")) || 0;
-  const remainingAfterPayment = selectedDealRow
-    ? Math.max(0, selectedDealRow.remaining - paymentAmountNum)
-    : 0;
 
   const setField = (event) => {
     setForm((previous) => ({
@@ -3350,11 +3933,6 @@ function Payments({ onNavigate }) {
     setOpen(true);
   };
 
-  const closeForm = () => {
-    setOpen(false);
-    setError("");
-  };
-
   const submitPayment = async (event) => {
     event.preventDefault();
     setError("");
@@ -3367,7 +3945,6 @@ function Payments({ onNavigate }) {
       return setError("Please enter a valid payment amount greater than 0.");
     }
 
-    // Strict validation: blocked if payment exceeds remaining
     if (paymentAmountNum > selectedDealRow.remaining) {
       return setError(
         `Payment amount (${money(paymentAmountNum)}) cannot exceed the remaining balance of ${money(selectedDealRow.remaining)}.`
@@ -3387,7 +3964,7 @@ function Payments({ onNavigate }) {
       };
 
       await addPayment(newPayment);
-      closeForm();
+      setOpen(false);
     } catch (err) {
       console.error("Payment creation error:", err);
       setError(err?.message || "Unable to record payment. Please try again.");
@@ -3448,128 +4025,6 @@ function Payments({ onNavigate }) {
         </div>
       </div>
 
-      {open && (
-        <div className="modal-overlay" onClick={closeForm} role="dialog" aria-modal="true">
-          <div className="modal-card" style={{ maxWidth: "600px" }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-head">
-              <h3>Record Deal Payment</h3>
-              <button className="icon-btn" onClick={closeForm} aria-label="Close form">
-                <X size={16} />
-              </button>
-            </div>
-            <form onSubmit={submitPayment}>
-              <div className="modal-body">
-                {error && <div className="form-error" role="alert">{error}</div>}
-                
-                <label className="field-group">
-                  <span className="field-title">Select Deal</span>
-                  <select
-                    name="transactionId"
-                    value={form.transactionId}
-                    onChange={setField}
-                    required
-                  >
-                    <option value="">-- Choose a Deal --</option>
-                    {dealRows.map((row) => (
-                      <option key={row.deal.id} value={row.deal.id}>
-                        {row.deal.name} ({money(row.original)}) — Remaining: {money(row.remaining)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                {selectedDealRow && (
-                  <div className="payment-live-details">
-                    <Detail label="Original Deal Amount" value={money(selectedDealRow.original)} />
-                    <Detail label="Total Already Paid" value={money(selectedDealRow.paid)} />
-                    <Detail label="Remaining Before Payment" value={money(selectedDealRow.remaining)} />
-                  </div>
-                )}
-
-                <div className="form-grid" style={{ padding: 0, marginTop: "12px" }}>
-                  <label className="field-group">
-                    <span className="field-title">Payment Amount</span>
-                    <div className="input-with-symbol">
-                      <span className="input-symbol">₹</span>
-                      <input
-                        name="amount"
-                        value={form.amount}
-                        onChange={(event) => {
-                          const raw = event.target.value
-                            .replace(/[^0-9.]/g, "")
-                            .replace(/(\..*)\./g, "$1");
-                          setForm((previous) => ({
-                            ...previous,
-                            amount: raw ? formatIndianNumber(raw) : "",
-                          }));
-                        }}
-                        inputMode="decimal"
-                        placeholder="e.g. 3,00,000"
-                        required
-                      />
-                    </div>
-                  </label>
-
-                  <label className="field-group">
-                    <span className="field-title">Payment Date</span>
-                    <input
-                      name="date"
-                      type="date"
-                      value={form.date}
-                      onChange={setField}
-                      required
-                    />
-                  </label>
-
-                  <label className="field-group">
-                    <span className="field-title">Payment Method</span>
-                    <select name="method" value={form.method} onChange={setField}>
-                      <option>Bank transfer</option>
-                      <option>UPI</option>
-                      <option>Cash</option>
-                      <option>Cheque</option>
-                      <option>Other</option>
-                    </select>
-                  </label>
-
-                  {selectedDealRow && (
-                    <div className="field-group calculated-cell">
-                      <div className="calculated-field-card">
-                        <div className="calc-header">
-                          <span className="field-title">Remaining After Payment</span>
-                        </div>
-                        <div className="calc-value">{money(remainingAfterPayment)}</div>
-                        <span className="calc-formula">Balance remaining on deal</span>
-                      </div>
-                    </div>
-                  )}
-
-                  <label className="field-group full">
-                    <span className="field-title">Reference / Notes</span>
-                    <textarea
-                      name="notes"
-                      value={form.notes}
-                      onChange={setField}
-                      placeholder="Transaction reference, UTR, check number..."
-                      rows={2}
-                    />
-                  </label>
-                </div>
-              </div>
-
-              <div className="modal-actions">
-                <Button secondary type="button" onClick={closeForm}>
-                  Cancel
-                </Button>
-                <Button type="submit">
-                  Record Payment
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       <Panel
         title="Deal Payments"
         action={
@@ -3590,7 +4045,6 @@ function Payments({ onNavigate }) {
       >
         {filteredDeals.length ? (
           <>
-            {/* Desktop Table View */}
             <div className="table-scroll desktop-data-table">
               <table>
                 <thead>
@@ -3601,179 +4055,195 @@ function Payments({ onNavigate }) {
                     <th>Paid</th>
                     <th>Remaining</th>
                     <th>Status</th>
-                    <th>Last Payment</th>
-                    <th style={{ textAlign: "right", paddingRight: "20px" }}>Actions</th>
+                    <th style={{ textAlign: "right" }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredDeals.map((row) => (
-                    <React.Fragment key={row.deal.id}>
-                      <tr>
-                        <td>
-                          <b>{row.deal.name}</b>
-                          <small className="table-id">{row.deal.id}</small>
-                        </td>
-                        <td>{row.dealer?.name || "Dealer not linked"}</td>
-                        <td><b>{money(row.original)}</b></td>
-                        <td style={{ color: "var(--green)", fontWeight: 600 }}>{money(row.paid)}</td>
-                        <td style={{ color: row.remaining > 0 ? "var(--yellow)" : "var(--muted)", fontWeight: 600 }}>
-                          {money(row.remaining)}
-                        </td>
-                        <td><Status>{row.status}</Status></td>
-                        <td>
-                          {row.lastPayment ? (
-                            <div>
-                              <span>{row.lastPayment.date}</span>
-                              <small className="table-id">{money(row.lastPayment.amount)}</small>
-                            </div>
-                          ) : (
-                            <span style={{ color: "var(--muted)" }}>No payments</span>
-                          )}
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          <div className="table-actions" style={{ justifyContent: "flex-end" }}>
-                            <button
-                              type="button"
-                              className="btn-action"
-                              onClick={() =>
-                                setSelectedHistoryId(selectedHistoryId === row.deal.id ? null : row.deal.id)
-                              }
-                            >
-                              {selectedHistoryId === row.deal.id ? "Hide history" : "History"} ({row.payments.length})
-                            </button>
-                            {row.remaining > 0 && (
-                              <button
-                                type="button"
-                                className="button secondary"
-                                style={{ height: "30px", fontSize: "11px", padding: "0 10px" }}
-                                onClick={() => openAddPaymentForDeal(row.deal.id)}
-                              >
-                                <Plus size={13} /> Pay
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                      {selectedHistoryId === row.deal.id && (
-                        <tr>
-                          <td colSpan={8} style={{ background: "#f8fafd", padding: "16px 20px" }}>
-                            <div className="payment-history-box" style={{ background: "#fff", border: "1px solid var(--line)", borderRadius: "8px", padding: "14px 18px" }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", borderBottom: "1px solid var(--line)", paddingBottom: "8px" }}>
-                                <strong>Payment History for {row.deal.name}</strong>
-                                <span style={{ fontSize: "12px", color: "var(--muted)" }}>
-                                  Total Paid: <b style={{ color: "var(--green)" }}>{money(row.paid)}</b> of {money(row.original)}
-                                </span>
-                              </div>
-                              {row.payments.length ? (
-                                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                                  {row.payments.map((payment) => (
-                                    <div
-                                      key={payment.id}
-                                      style={{
-                                        display: "flex",
-                                        justifyContent: "space-between",
-                                        alignItems: "center",
-                                        padding: "8px 12px",
-                                        background: "#fafcff",
-                                        borderRadius: "6px",
-                                        border: "1px solid #edf2fa",
-                                        fontSize: "12px",
-                                      }}
-                                    >
-                                      <div>
-                                        <b style={{ marginRight: "12px" }}>{payment.date}</b>
-                                        <span style={{ color: "var(--muted)", marginRight: "12px" }}>Method: {payment.method}</span>
-                                        {payment.notes && <span style={{ color: "var(--ink)", fontStyle: "italic" }}>"{payment.notes}"</span>}
-                                      </div>
-                                      <strong style={{ color: "var(--green)", fontFamily: "Manrope" }}>
-                                        +{money(payment.amount)}
-                                      </strong>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <span style={{ fontSize: "12px", color: "var(--muted)" }}>No payments recorded yet.</span>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
+                    <tr key={row.deal.id}>
+                      <td>
+                        <b>{row.deal.name}</b>
+                        <small className="table-id">{row.deal.id}</small>
+                      </td>
+                      <td>{row.dealer?.name || "Unknown dealer"}</td>
+                      <td><b>{money(row.original)}</b></td>
+                      <td style={{ color: "var(--green)", fontWeight: 600 }}>{money(row.paid)}</td>
+                      <td style={{ color: row.remaining > 0 ? "var(--ink)" : "var(--muted)", fontWeight: 600 }}>
+                        {money(row.remaining)}
+                      </td>
+                      <td>
+                        <Status>{row.status}</Status>
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        {row.remaining > 0 ? (
+                          <button
+                            type="button"
+                            className="btn-action-primary"
+                            onClick={() => openAddPaymentForDeal(row.deal.id)}
+                          >
+                            <Plus size={13} /> Add Payment
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: "11px", color: "var(--green)", fontWeight: 600 }}>
+                            <Check size={13} /> Settled
+                          </span>
+                        )}
+                      </td>
+                    </tr>
                   ))}
                 </tbody>
               </table>
             </div>
 
-            {/* Mobile Card-Based Payments (Zero horizontal scrolling) */}
             <div className="mobile-data-list">
               {filteredDeals.map((row) => (
-                <article className="mobile-card-item" key={row.deal.id} style={{ cursor: "default" }}>
+                <div key={row.deal.id} className="mobile-card-item">
                   <div className="mobile-card-main">
                     <div className="mobile-card-copy">
                       <b>{row.deal.name}</b>
-                      <span>{row.dealer?.name || "Dealer not linked"}</span>
+                      <span>{row.dealer?.name || "Unknown dealer"}</span>
                     </div>
                     <div className="mobile-card-amount">{money(row.original)}</div>
                   </div>
-
-                  <div className="payment-deal-values" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", margin: "8px 0", padding: "10px 0", borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)" }}>
-                    <Detail label="Original" value={money(row.original)} />
-                    <Detail label="Paid" value={money(row.paid)} />
-                    <Detail label="Remaining" value={money(row.remaining)} />
-                  </div>
-
                   <div className="mobile-card-meta">
-                    <span>Last: {row.lastPayment?.date || "None"}</span>
+                    <span>Paid: {money(row.paid)} • Rem: {money(row.remaining)}</span>
                     <Status>{row.status}</Status>
                   </div>
-
-                  <div className="mobile-card-actions" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "10px" }}>
-                    <button
-                      type="button"
-                      className="link-btn-subtle"
-                      onClick={() => setSelectedHistoryId(selectedHistoryId === row.deal.id ? null : row.deal.id)}
-                    >
-                      {selectedHistoryId === row.deal.id ? "Hide History" : `History (${row.payments.length})`}
-                    </button>
-                    {row.remaining > 0 && (
+                  {row.remaining > 0 && (
+                    <div style={{ marginTop: "4px" }}>
                       <button
                         type="button"
-                        className="button secondary"
-                        style={{ height: "32px", fontSize: "11px", padding: "0 12px" }}
+                        className="btn-action-primary"
+                        style={{ width: "100%", justifyContent: "center" }}
                         onClick={() => openAddPaymentForDeal(row.deal.id)}
                       >
-                        <Plus size={13} /> Record Payment
+                        <Plus size={13} /> Add Payment
                       </button>
-                    )}
-                  </div>
-
-                  {selectedHistoryId === row.deal.id && (
-                    <div className="payment-history" style={{ marginTop: "12px", padding: "12px", borderRadius: "8px", background: "#f8fafd", border: "1px solid var(--line)" }}>
-                      <strong style={{ fontSize: "12px", display: "block", marginBottom: "8px" }}>Payment Records</strong>
-                      {row.payments.length ? (
-                        row.payments.map((p) => (
-                          <div key={p.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", padding: "4px 0", borderBottom: "1px dashed #e2e8f0" }}>
-                            <span>{p.date} · {p.method} {p.notes ? `(${p.notes})` : ""}</span>
-                            <b style={{ color: "var(--green)" }}>{money(p.amount)}</b>
-                          </div>
-                        ))
-                      ) : (
-                        <span style={{ fontSize: "11px", color: "var(--muted)" }}>No payments recorded.</span>
-                      )}
                     </div>
                   )}
-                </article>
+                </div>
               ))}
             </div>
           </>
         ) : (
           <div className="empty-state">
-            <Search size={20} />
+            <CreditCard size={20} />
             <b>No deals found</b>
-            <span>Create a deal or change your filter to see payment records.</span>
+            <span>{data.transactions.length ? "Change your filter to see payment records." : "Create a deal to start tracking payments."}</span>
           </div>
         )}
       </Panel>
+
+      {open && (
+        <div className="modal-overlay" onClick={() => setOpen(false)} role="dialog" aria-modal="true">
+          <div className="modal-card" style={{ maxWidth: "460px" }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <h3>Record Payment</h3>
+              <button className="icon-btn" onClick={() => setOpen(false)} aria-label="Close modal">
+                <X size={16} />
+              </button>
+            </div>
+            <form onSubmit={submitPayment}>
+              <div className="modal-body">
+                {error && <div className="login-error-banner" role="alert">{error}</div>}
+                
+                <label className="field-group">
+                  <span className="field-title">Select Deal</span>
+                  <select
+                    name="transactionId"
+                    value={form.transactionId}
+                    onChange={setField}
+                    required
+                  >
+                    <option value="">-- Choose a Deal --</option>
+                    {dealRows.map((row) => (
+                      <option key={row.deal.id} value={row.deal.id}>
+                        {row.deal.name} ({money(row.original)}) — Remaining: {money(row.remaining)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {selectedDealRow && (
+                  <div style={{ background: "var(--line-subtle)", padding: "10px 12px", borderRadius: "8px", fontSize: "11px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                    <div>
+                      <span style={{ color: "var(--muted)" }}>Total Paid:</span>
+                      <strong style={{ display: "block", color: "var(--green)" }}>{money(selectedDealRow.paid)}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: "var(--muted)" }}>Remaining:</span>
+                      <strong style={{ display: "block", color: "var(--blue)" }}>{money(selectedDealRow.remaining)}</strong>
+                    </div>
+                  </div>
+                )}
+
+                <label className="field-group">
+                  <span className="field-title">Payment Amount</span>
+                  <div className="input-with-symbol">
+                    <span className="input-symbol">₹</span>
+                    <input
+                      name="amount"
+                      value={form.amount}
+                      onChange={(event) => {
+                        const raw = event.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+                        setForm((previous) => ({
+                          ...previous,
+                          amount: raw ? formatIndianNumber(raw) : "",
+                        }));
+                      }}
+                      inputMode="decimal"
+                      placeholder="e.g. 50,000"
+                      required
+                    />
+                  </div>
+                </label>
+
+                <label className="field-group">
+                  <span className="field-title">Payment Date</span>
+                  <input
+                    name="date"
+                    type="date"
+                    value={form.date}
+                    onChange={setField}
+                    required
+                  />
+                </label>
+
+                <label className="field-group">
+                  <span className="field-title">Payment Method</span>
+                  <select name="method" value={form.method} onChange={setField}>
+                    <option>Bank transfer</option>
+                    <option>UPI</option>
+                    <option>Cash</option>
+                    <option>Cheque</option>
+                    <option>Other</option>
+                  </select>
+                </label>
+
+                <label className="field-group full">
+                  <span className="field-title">Reference / Notes</span>
+                  <textarea
+                    name="notes"
+                    value={form.notes}
+                    onChange={setField}
+                    placeholder="UTR, Cheque number, bank reference..."
+                    rows={2}
+                  />
+                </label>
+              </div>
+
+              <div className="modal-actions">
+                <Button secondary type="button" onClick={() => setOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit">
+                  Record Payment
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -3784,7 +4254,6 @@ function Analytics({ onNavigate }) {
 
   const analytics = calculateAnalytics(data.transactions, data.payments, period);
 
-  // Additional unified earnings and deals calculations
   const totalDealsVolume = data.transactions.reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0);
   const totalBrokerage = data.transactions.reduce((sum, item) => {
     const rev = Number(item.totalRate || item.amount) || 0;
@@ -3806,44 +4275,29 @@ function Analytics({ onNavigate }) {
         backTo="/"
         backLabel="Back to Dashboard"
         onNavigate={onNavigate}
-        eyebrow="Performance & Earnings"
+        eyebrow="Performance & Intelligence"
         title="Analytics"
         description="Comprehensive finance intelligence across sales volume, brokerage earnings, dealer metrics, and settlement activity."
         action={
-          <div className="analytics-header-actions">
-            <div className="segmented-control period-control" role="radiogroup" aria-label="Analytics Period">
-              <button
-                type="button"
-                role="radio"
-                aria-checked={period === "Weekly"}
-                className={`segmented-btn ${period === "Weekly" ? "active" : ""}`}
-                onClick={() => setPeriod("Weekly")}
-              >
-                Weekly
-              </button>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={period === "Monthly"}
-                className={`segmented-btn ${period === "Monthly" ? "active" : ""}`}
-                onClick={() => setPeriod("Monthly")}
-              >
-                Monthly
-              </button>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={period === "Quarterly"}
-                className={`segmented-btn ${period === "Quarterly" ? "active" : ""}`}
-                onClick={() => setPeriod("Quarterly")}
-              >
-                Quarterly
-              </button>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+            <div className="segmented-control" role="radiogroup" aria-label="Analytics Period">
+              {["Weekly", "Monthly", "Quarterly"].map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  role="radio"
+                  aria-checked={period === p}
+                  className={`segmented-btn ${period === p ? "active" : ""}`}
+                  onClick={() => setPeriod(p)}
+                >
+                  {p}
+                </button>
+              ))}
             </div>
             <Button
               onClick={() =>
                 downloadCsv(
-                  `diamond-finance-analytics-${period.toLowerCase()}.csv`,
+                  `analytics-${period.toLowerCase()}.csv`,
                   ["Metric", "Value"],
                   [
                     ["Period", period],
@@ -3875,38 +4329,12 @@ function Analytics({ onNavigate }) {
           <strong>{analytics.transactionsCount}</strong>
         </div>
         <div className="stat">
-          <span className="stat-top">Brokerage / Earnings ({period})</span>
+          <span className="stat-top">Brokerage Earned ({period})</span>
           <strong style={{ color: "var(--green)" }}>{money(analytics.earnings)}</strong>
         </div>
         <div className="stat">
           <span className="stat-top">Payments Collected ({period})</span>
           <strong>{money(analytics.paymentsTotal)}</strong>
-        </div>
-      </div>
-
-      <div className="earnings-support" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
-        <div className="panel support-card" style={{ padding: "16px 18px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <span style={{ fontSize: "11px", color: "var(--muted)" }}>All-Time Brokerage Earned</span>
-            <strong style={{ fontFamily: "Manrope", fontSize: "20px", display: "block", marginTop: "4px" }}>{money(totalBrokerage)}</strong>
-            <small style={{ fontSize: "10px", color: "var(--muted)" }}>Across all {data.transactions.length} deals</small>
-          </div>
-          <div className="stat-icon">
-            <CircleDollarSign size={18} />
-          </div>
-        </div>
-
-        <div className="panel support-card" style={{ padding: "16px 18px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <span style={{ fontSize: "11px", color: "var(--muted)" }}>Pending Brokerage</span>
-            <strong style={{ fontFamily: "Manrope", fontSize: "20px", display: "block", marginTop: "4px", color: "var(--yellow)" }}>{money(pendingBrokerage)}</strong>
-            <small style={{ fontSize: "10px", color: "var(--muted)" }}>
-              {data.transactions.filter((item) => item.status !== "Completed").length} pending deals
-            </small>
-          </div>
-          <div className="stat-icon">
-            <Wallet size={18} />
-          </div>
         </div>
       </div>
 
@@ -3925,7 +4353,7 @@ function Analytics({ onNavigate }) {
           </div>
         </Panel>
 
-        <Panel title="Deal Activity & Status" className="report-panel">
+        <Panel title="Deal Portfolio Status" className="report-panel">
           <div className="report-activity-list">
             <div>
               <span>Completed Deals</span>
@@ -3963,64 +4391,36 @@ function Analytics({ onNavigate }) {
         </Panel>
 
         <Panel title="Top Dealer Rankings" className="report-panel full-width-panel">
-          <div className="dealer-rankings">
-            {data.dealers.map((dealer, index) => {
-              const records = data.transactions.filter(
-                (item) => item.dealerId === dealer.id || item.sellerId === dealer.id
-              );
-              const volume = records.reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0);
-              return (
-                <div className="dealer-rank-row" key={dealer.id}>
-                  <div className="dealer-rank-badge">#{index + 1}</div>
-                  <div className="dealer-rank-copy">
-                    <strong>{dealer.name}</strong>
-                    <small>{dealer.location} • {dealerTypeLabel(dealer.type)}</small>
+          {data.dealers.length ? (
+            <div className="dealer-rankings">
+              {data.dealers.map((dealer, index) => {
+                const records = data.transactions.filter(
+                  (item) => item.dealerId === dealer.id || item.sellerId === dealer.id
+                );
+                const volume = records.reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0);
+                const badgeColor = MULTICOLOR_PALETTE[index % MULTICOLOR_PALETTE.length];
+                return (
+                  <div className="dealer-rank-row" key={dealer.id}>
+                    <div className="dealer-rank-badge" style={{ backgroundColor: `${badgeColor}20`, color: badgeColor }}>
+                      #{index + 1}
+                    </div>
+                    <div className="dealer-rank-copy">
+                      <strong>{dealer.name}</strong>
+                      <small>{dealer.location} • {dealerTypeLabel(dealer.type)}</small>
+                    </div>
+                    <div className="dealer-rank-value">
+                      <b>{money(volume)}</b>
+                      <span>{records.length} deals</span>
+                    </div>
                   </div>
-                  <div className="dealer-rank-value">
-                    <b>{money(volume)}</b>
-                    <span>{records.length} deals</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Panel>
-
-        <Panel title="Deals & Earnings Breakdown" className="report-panel full-width-panel">
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Deal ID</th>
-                  <th>Deal Name</th>
-                  <th>Dealer</th>
-                  <th>Date</th>
-                  <th>Deal Volume</th>
-                  <th>Brokerage Rate</th>
-                  <th>Earned Brokerage</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.transactions.slice(0, 10).map((item) => {
-                  const dealer = data.dealers.find((entry) => entry.id === (item.dealerId || item.sellerId));
-                  const rev = Number(item.totalRate || item.amount) || 0;
-                  const rate = Number(item.brokerageRate) || 0;
-                  const earned = item.brokerageEarned != null ? Number(item.brokerageEarned) : (rev * rate) / 100;
-                  return (
-                    <tr key={item.id}>
-                      <td><b>{item.id}</b></td>
-                      <td>{item.name}</td>
-                      <td>{dealer?.name || "Dealer not linked"}</td>
-                      <td>{item.date}</td>
-                      <td><b>{money(rev)}</b></td>
-                      <td>{rate}%</td>
-                      <td style={{ color: "var(--green)", fontWeight: 600 }}>{money(earned)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <span>No dealers available for ranking.</span>
+            </div>
+          )}
         </Panel>
       </div>
     </>
@@ -4097,8 +4497,8 @@ function Bookkeeping({ onNavigate }) {
     }
     const entry = {
       ...form,
-      id: editing?.id || crypto.randomUUID(),
-      userId: user.id,
+      id: editing?.id || nextId("BK", entries),
+      userId: user?.id,
       category: form.category.trim(),
       description: form.description.trim(),
       amount,
@@ -4125,15 +4525,6 @@ function Bookkeeping({ onNavigate }) {
   const setField = (event) =>
     setForm((previous) => ({ ...previous, [event.target.name]: event.target.value }));
 
-  useEffect(() => {
-    if (!formOpen || typeof window === "undefined" || !window.matchMedia("(max-width: 767px)").matches) return undefined;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [formOpen]);
-
   return (
     <>
       <PageHeader
@@ -4142,7 +4533,7 @@ function Bookkeeping({ onNavigate }) {
         onNavigate={onNavigate}
         eyebrow="Finance"
         title="Bookkeeping"
-        description="Keep a simple record of business money coming in and going out."
+        description="Keep a simple record of broader business money coming in and going out."
         action={<Button onClick={() => { resetForm(); setFormOpen(true); }}>Add Entry</Button>}
       />
       <div className="bookkeeping-summary">
@@ -4151,33 +4542,42 @@ function Bookkeeping({ onNavigate }) {
         <div className="stat"><span className="stat-top">Net balance</span><strong>{money(totalIncome - totalExpenses)}</strong></div>
       </div>
       {formOpen && (
-        <form className="panel bookkeeping-form" onSubmit={submit}>
-          <div className="panel-head bookkeeping-form-head">
-            <button type="button" className="bookkeeping-back" onClick={resetForm}><ChevronLeft size={16} /> Back</button>
-            <h2>{editing ? "Edit bookkeeping entry" : "Add bookkeeping entry"}</h2>
-            <button type="button" className="icon-btn bookkeeping-close" onClick={resetForm} aria-label="Close entry form"><X size={17} /></button>
+        <div className="modal-overlay" onClick={resetForm} role="dialog" aria-modal="true">
+          <div className="modal-card" style={{ maxWidth: "620px" }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <h3>{editing ? "Edit Bookkeeping Entry" : "Add Bookkeeping Entry"}</h3>
+              <button className="icon-btn" onClick={resetForm} aria-label="Close modal">
+                <X size={16} />
+              </button>
+            </div>
+            <form onSubmit={submit}>
+              <div className="modal-body">
+                {error && <div className="login-error-banner" role="alert">{error}</div>}
+                <div className="form-grid" style={{ padding: 0 }}>
+                  <label className="field-group"><span className="field-title">Entry Type</span><select name="entryType" value={form.entryType} onChange={changeEntryType}><option>Income</option><option>Expense</option></select></label>
+                  <label className="field-group"><span className="field-title">Date</span><input name="date" type="date" value={form.date} onChange={setField} required /></label>
+                  <label className="field-group"><span className="field-title">Category</span><select name="category" value={form.category} onChange={setField} required>{categories.map((category) => <option key={category}>{category}</option>)}</select></label>
+                  <label className="field-group"><span className="field-title">Amount</span><div className="input-with-symbol"><span className="input-symbol">₹</span><input name="amount" inputMode="decimal" value={form.amount} onChange={(event) => { const raw = event.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1"); setForm((previous) => ({ ...previous, amount: raw ? formatIndianNumber(raw) : "" })); }} required /></div></label>
+                  <label className="field-group"><span className="field-title">Dealer / Party</span><select name="dealerId" value={form.dealerId} onChange={setField}><option value="">None / Not linked</option>{data.dealers.map((dealer) => <option key={dealer.id} value={dealer.id}>{dealer.name}</option>)}</select></label>
+                  <label className="field-group"><span className="field-title">Deal</span><select name="transactionId" value={form.transactionId} onChange={setField}><option value="">None / Not linked</option>{data.transactions.map((transaction) => { const dealer = data.dealers.find((item) => item.id === (transaction.dealerId || transaction.sellerId)); return <option key={transaction.id} value={transaction.id}>{transaction.name}{dealer ? ` - ${dealer.name}` : ""}</option>; })}</select></label>
+                  <label className="field-group"><span className="field-title">Description</span><input name="description" value={form.description} onChange={setField} required /></label>
+                  <label className="field-group"><span className="field-title">Payment Method</span><select name="paymentMethod" value={form.paymentMethod} onChange={setField}><option>Bank Transfer</option><option>UPI</option><option>Cash</option><option>Cheque</option><option>Other</option></select></label>
+                  <label className="field-group full"><span className="field-title">Reference / Notes</span><textarea name="notes" value={form.notes} onChange={setField} rows={2} /></label>
+                </div>
+              </div>
+              <div className="modal-actions">
+                <Button secondary type="button" onClick={resetForm}>Cancel</Button>
+                <Button type="submit">Save Entry</Button>
+              </div>
+            </form>
           </div>
-          <div className="form-grid">
-            <label className="field-group"><span className="field-title">Entry Type</span><select name="entryType" value={form.entryType} onChange={changeEntryType}><option>Income</option><option>Expense</option></select></label>
-            <label className="field-group"><span className="field-title">Date</span><input name="date" type="date" value={form.date} onChange={setField} required /></label>
-            <label className="field-group"><span className="field-title">Category</span><select name="category" value={form.category} onChange={setField} required>{categories.map((category) => <option key={category}>{category}</option>)}</select></label>
-            <label className="field-group"><span className="field-title">Amount</span><div className="input-with-symbol"><span className="input-symbol">₹</span><input name="amount" inputMode="decimal" value={form.amount} onChange={(event) => { const raw = event.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1"); setForm((previous) => ({ ...previous, amount: raw ? formatIndianNumber(raw) : "" })); }} required /></div></label>
-            <label className="field-group"><span className="field-title">Dealer / Party</span><select name="dealerId" value={form.dealerId} onChange={setField}><option value="">None / Not linked</option>{data.dealers.map((dealer) => <option key={dealer.id} value={dealer.id}>{dealer.name}</option>)}</select></label>
-            <label className="field-group"><span className="field-title">Deal</span><select name="transactionId" value={form.transactionId} onChange={setField}><option value="">None / Not linked</option>{data.transactions.map((transaction) => { const dealer = data.dealers.find((item) => item.id === (transaction.dealerId || transaction.sellerId)); return <option key={transaction.id} value={transaction.id}>{transaction.name}{dealer ? ` - ${dealer.name}` : ""}</option>; })}</select></label>
-            <label className="field-group"><span className="field-title">Description</span><input name="description" value={form.description} onChange={setField} required /></label>
-            <label className="field-group"><span className="field-title">Payment Method</span><select name="paymentMethod" value={form.paymentMethod} onChange={setField}><option>Bank Transfer</option><option>UPI</option><option>Cash</option><option>Cheque</option><option>Other</option></select></label>
-            <label className="field-group full"><span className="field-title">Reference / Notes</span><textarea name="notes" value={form.notes} onChange={setField} /></label>
-          </div>
-          {error && <div className="form-error" role="alert">{error}</div>}
-          <div className="form-actions"><Button secondary type="button" onClick={resetForm}>Cancel</Button><Button type="submit">Save Entry</Button></div>
-        </form>
+        </div>
       )}
-      {!formOpen && error && <div className="form-error" role="alert">{error}</div>}
       <Panel title="Entries" action={<div className="segmented-control bookkeeping-filter" role="radiogroup" aria-label="Filter bookkeeping entries">{["All", "Income", "Expense"].map((item) => <button key={item} type="button" role="radio" aria-checked={filter === item} className={`segmented-btn ${filter === item ? "active" : ""}`} onClick={() => setFilter(item)}>{item}</button>)}</div>}>
         <div className="bookkeeping-list">
           {visibleEntries.length ? visibleEntries.map((entry) => (
             <article className={`bookkeeping-entry ${entry.entryType.toLowerCase()}`} key={entry.id}>
-              <div className="bookkeeping-entry-main"><div><strong>{entry.description}</strong><span>{entry.category} · {new Date(entry.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span><small>{entry.paymentMethod}</small></div><strong className="bookkeeping-amount">{entry.entryType === "Income" ? "+" : "-"}{money(entry.amount)}</strong></div>
+              <div className="bookkeeping-entry-main"><div><strong>{entry.description}</strong><span>{entry.category} · {new Date(entry.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span><small style={{ display: "block", color: "var(--muted)", fontSize: "10.5px", marginTop: "2px" }}>{entry.paymentMethod}</small></div><strong className="bookkeeping-amount">{entry.entryType === "Income" ? "+" : "-"}{money(entry.amount)}</strong></div>
               <div className="bookkeeping-entry-footer"><span>{entry.entryType}</span><div><button type="button" className="link-btn-subtle" onClick={() => openEdit(entry)}>Edit</button><button type="button" className="link-btn-subtle danger" onClick={() => remove(entry)}>Delete</button></div></div>
             </article>
           )) : <div className="empty-state"><b>No bookkeeping entries yet</b><span>Add your first income or expense entry to get started.</span></div>}
@@ -4236,13 +4636,13 @@ function ProfilePage({ onNavigate }) {
         description="Manage your personal account information."
       />
       {savedNotice && (
-        <div className="notice" role="status">
+        <div className="notice" role="status" style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
           <CheckCircle2 size={16} color="var(--green)" />
           <span>Profile saved successfully.</span>
         </div>
       )}
       {error && (
-        <div className="login-error-banner" role="alert">
+        <div className="login-error-banner" role="alert" style={{ marginBottom: "16px" }}>
           <AlertCircle size={16} />
           <span>{error}</span>
         </div>
@@ -4251,11 +4651,11 @@ function ProfilePage({ onNavigate }) {
         <section className="settings-section">
           <div className="settings-section-head"><h2>Personal information</h2></div>
           <form className="settings-field-grid" onSubmit={handleSave}>
-            <div className="profile-identity">
-              <div className="avatar">{initials}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", gridColumn: "1/-1", padding: "8px 0" }}>
+              <div className="avatar" style={{ width: "42px", height: "42px", fontSize: "14px" }}>{initials}</div>
               <div>
-                <strong>{displayName}</strong>
-                <small>{user?.email || "Not available"}</small>
+                <strong style={{ fontSize: "14px" }}>{displayName}</strong>
+                <small style={{ display: "block", color: "var(--muted)" }}>{user?.email || "Not available"}</small>
               </div>
             </div>
             <label className="settings-field">
@@ -4266,7 +4666,7 @@ function ProfilePage({ onNavigate }) {
               <span>Email address</span>
               <input value={user?.email || "Not available"} readOnly />
             </label>
-            <div className="profile-form-actions">
+            <div style={{ gridColumn: "1/-1", display: "flex", justifyContent: "flex-end" }}>
               <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Save changes"}</Button>
             </div>
           </form>
@@ -4284,6 +4684,7 @@ function ProfilePage({ onNavigate }) {
 }
 
 function SettingsPage({ onNavigate }) {
+  const { theme, setTheme } = useData();
   const [settings, setSettings] = useState(loadSettings);
   const [savedNotice, setSavedNotice] = useState(false);
   const [error, setError] = useState("");
@@ -4293,7 +4694,6 @@ function SettingsPage({ onNavigate }) {
     setSettings({
       ...nextSettings,
       businessName: nextSettings.businessName || "Diamond Broker",
-      businessAddress: nextSettings.address || "",
       address: nextSettings.address || "",
     });
   }, []);
@@ -4306,10 +4706,15 @@ function SettingsPage({ onNavigate }) {
     }));
   };
 
+  const handleThemeChange = (newTheme) => {
+    setTheme(newTheme);
+    setSettings((prev) => ({ ...prev, theme: newTheme }));
+  };
+
   const handleSave = () => {
     setError("");
     try {
-      saveSettings({ ...settings, address: settings.address || settings.businessAddress || "" });
+      saveSettings({ ...settings, theme, address: settings.address || "" });
       setSavedNotice(true);
       setTimeout(() => setSavedNotice(false), 3500);
     } catch (err) {
@@ -4326,7 +4731,7 @@ function SettingsPage({ onNavigate }) {
         onNavigate={onNavigate}
         eyebrow="Workspace"
         title="Settings"
-        description="Manage your account, business details and operating preferences."
+        description="Manage your account, theme appearance, business details and preferences."
         action={<Button onClick={handleSave}>Save changes</Button>}
       />
 
@@ -4345,6 +4750,64 @@ function SettingsPage({ onNavigate }) {
       )}
 
       <div className="settings-page">
+        {/* APPEARANCE / THEME PREFERENCES */}
+        <section className="settings-section">
+          <div className="settings-section-head">
+            <h2>Appearance & Theme</h2>
+          </div>
+          <div className="settings-field-grid">
+            <div className="settings-field full-width-field">
+              <span>Theme Mode</span>
+              <div style={{ display: "flex", gap: "10px", marginTop: "4px" }}>
+                <button
+                  type="button"
+                  onClick={() => handleThemeChange("light")}
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                    padding: "12px",
+                    borderRadius: "8px",
+                    border: `1.5px solid ${theme === "light" ? "var(--blue)" : "var(--line)"}`,
+                    background: theme === "light" ? "var(--blue-soft)" : "var(--panel)",
+                    color: theme === "light" ? "var(--blue)" : "var(--ink)",
+                    fontWeight: 600,
+                    fontSize: "12.5px",
+                  }}
+                >
+                  <Sun size={17} />
+                  <span>Light Mode {theme === "light" ? "(Active)" : ""}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleThemeChange("dark")}
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                    padding: "12px",
+                    borderRadius: "8px",
+                    border: `1.5px solid ${theme === "dark" ? "var(--blue)" : "var(--line)"}`,
+                    background: theme === "dark" ? "var(--blue-soft)" : "var(--panel)",
+                    color: theme === "dark" ? "var(--blue)" : "var(--ink)",
+                    fontWeight: 600,
+                    fontSize: "12.5px",
+                  }}
+                >
+                  <Moon size={17} />
+                  <span>Dark Mode {theme === "dark" ? "(Active)" : ""}</span>
+                </button>
+              </div>
+              <small>Choose your preferred interface theme for day or night use.</small>
+            </div>
+          </div>
+        </section>
+
         <section className="settings-section">
           <div className="settings-section-head">
             <h2>Business</h2>
@@ -4358,10 +4821,10 @@ function SettingsPage({ onNavigate }) {
             <label className="settings-field">
               <span>Default currency</span>
               <select name="currency" value={settings.currency || "INR"} onChange={setField}>
-                <option value="INR">INR - Indian Rupee</option>
-                <option value="USD">USD - US Dollar</option>
+                <option value="INR">INR - Indian Rupee (₹)</option>
+                <option value="USD">USD - US Dollar ($)</option>
               </select>
-              <small>Used for all new deals.</small>
+              <small>Used for all new deals and expense entries.</small>
             </label>
             <label className="settings-field full-width-field">
               <span>Business address</span>
@@ -4403,6 +4866,8 @@ function SettingsPage({ onNavigate }) {
               <select name="timeZone" value={settings.timeZone || "Asia/Kolkata"} onChange={setField}>
                 <option value="Asia/Kolkata">Asia/Kolkata</option>
                 <option value="America/New_York">America/New_York</option>
+                <option value="Asia/Dubai">Asia/Dubai</option>
+                <option value="Europe/London">Europe/London</option>
               </select>
               <small>Controls date display in the dashboard.</small>
             </label>
@@ -4411,6 +4876,7 @@ function SettingsPage({ onNavigate }) {
               <select name="defaultView" value={settings.defaultView || "Dashboard"} onChange={setField}>
                 <option value="Dashboard">Dashboard</option>
                 <option value="Deals">Deals</option>
+                <option value="Daily Finance">Daily Finance</option>
                 <option value="Analytics">Analytics</option>
               </select>
               <small>Opened after login for the workspace.</small>

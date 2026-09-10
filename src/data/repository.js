@@ -1,70 +1,56 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient.js';
 
-const STORAGE_KEY = 'diamond-finance-data-v4';
-const SETTINGS_KEY = 'diamond-finance-settings-v1';
+const STORAGE_KEY = 'diamond-finance-data-v5';
+const SETTINGS_KEY = 'diamond-finance-settings-v2';
+const DAILY_EXPENSES_LOCAL_KEY = 'diamond-finance-daily-expenses-v1';
 
-export const seedData = {
-  transactions: [
-    {
-      id: 'TRX-20481',
-      name: 'Mumbai Lot #102',
-      dealerId: 'dealer-abc',
-      sellerId: 'dealer-abc',
-      buyerId: 'dealer-golden',
-      date: '2024-09-03',
-      diamondCarat: 10,
-      perCaratRate: 50000,
-      totalRate: 500000,
-      amount: 500000,
-      terms: 2,
-      termsAmount: 10000,
-      amountAfterTerms: 490000,
-      cvd: 0,
-      finalNet: 490000,
-      dueDays: 30,
-      sellType: 'Self',
-      otherSellType: '',
-      brokerageRate: 5,
-      brokerageEarned: 25000,
-      status: 'Completed',
-      paymentMethod: 'Bank transfer',
-      notes: 'Round brilliant diamond lot.'
-    },
-    {
-      id: 'TRX-20480',
-      name: 'Delhi Lot #88',
-      dealerId: 'dealer-golden',
-      sellerId: 'dealer-golden',
-      buyerId: 'dealer-abc',
-      date: '2024-09-02',
-      diamondCarat: 12.5,
-      perCaratRate: 80000,
-      totalRate: 1000000,
-      amount: 1000000,
-      terms: 2.5,
-      termsAmount: 25000,
-      amountAfterTerms: 975000,
-      cvd: 0,
-      finalNet: 975000,
-      dueDays: 45,
-      sellType: 'Other',
-      otherSellType: 'Wholesale',
-      brokerageRate: 5,
-      brokerageEarned: 50000,
-      status: 'Pending',
-      paymentMethod: 'Bank transfer',
-      notes: 'Fancy cut diamond parcel.'
-    }
-  ],
-  dealers: [
-    { id: 'dealer-abc', name: 'ABC Diamonds', location: 'Mumbai, India', contact: 'Alex Brown', email: 'alex@abcdiamonds.com', phone: '+91 22 5550 0198', status: 'Active', type: 'both' },
-    { id: 'dealer-golden', name: 'Golden Carats', location: 'Delhi, India', contact: 'Maya Shah', email: 'maya@goldencarats.com', phone: '+91 11 5550 0186', status: 'Active', type: 'both' }
-  ],
-  payments: [
-    { id: 'PAY-8300', transactionId: 'TRX-20481', dealerId: 'dealer-abc', date: '2024-09-03', amount: 500000, method: 'Bank transfer', status: 'Completed' },
-    { id: 'PAY-8301', transactionId: 'TRX-20480', dealerId: 'dealer-golden', date: '2024-09-02', amount: 1000000, method: 'Bank transfer', status: 'Pending' }
-  ]
+export const emptyData = {
+  transactions: [],
+  dealers: [],
+  payments: [],
+  bookkeeping: [],
+  dailyExpenses: [],
 };
+
+// Professional, cohesive multicolor palette
+export const MULTICOLOR_PALETTE = [
+  '#2563eb', // Blue
+  '#7c3aed', // Purple
+  '#10b981', // Emerald Green
+  '#f59e0b', // Amber
+  '#0d9488', // Teal
+  '#f97316', // Orange
+  '#f43f5e', // Rose
+  '#06b6d4', // Cyan
+  '#6366f1', // Indigo
+  '#64748b', // Slate
+];
+
+export const EXPENSE_CATEGORIES = [
+  { name: 'Office Expense', color: '#2563eb' },
+  { name: 'Travel', color: '#06b6d4' },
+  { name: 'Food', color: '#f97316' },
+  { name: 'Utilities', color: '#0d9488' },
+  { name: 'Salary', color: '#7c3aed' },
+  { name: 'Rent', color: '#f43f5e' },
+  { name: 'Bank Charges', color: '#f59e0b' },
+  { name: 'Transport', color: '#6366f1' },
+  { name: 'Other', color: '#64748b' },
+];
+
+export function getCategoryColor(categoryName) {
+  const found = EXPENSE_CATEGORIES.find(
+    (c) => c.name.toLowerCase() === String(categoryName || '').trim().toLowerCase()
+  );
+  if (found) return found.color;
+  // Deterministic fallback from palette
+  let hash = 0;
+  for (let i = 0; i < (categoryName || '').length; i++) {
+    hash = categoryName.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % MULTICOLOR_PALETTE.length;
+  return MULTICOLOR_PALETTE[index];
+}
 
 export function dealerTypeLabel(type) {
   const t = String(type || 'both').toLowerCase();
@@ -77,57 +63,43 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function getLocalDailyExpenses() {
+  try {
+    const raw = localStorage.getItem(DAILY_EXPENSES_LOCAL_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalDailyExpenses(expenses) {
+  try {
+    localStorage.setItem(DAILY_EXPENSES_LOCAL_KEY, JSON.stringify(expenses));
+  } catch (err) {
+    console.warn('Failed to save daily expenses locally:', err);
+  }
+}
+
 export function localRepository() {
   return {
     load() {
       try {
         const stored = localStorage.getItem(STORAGE_KEY);
         if (!stored) {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(seedData));
-          return clone(seedData);
+          return clone(emptyData);
         }
         const data = JSON.parse(stored);
         if (!Array.isArray(data.transactions) || !Array.isArray(data.dealers) || !Array.isArray(data.payments)) {
-          throw new Error('Invalid data');
+          return clone(emptyData);
         }
-        data.dealers = data.dealers.map(d => ({
-          ...d,
-          type: (d.type || 'both').toLowerCase(),
-        }));
-        data.transactions = data.transactions.map(t => {
-          const diamondCarat = t.diamondCarat ?? 0;
-          const perCaratRate = t.perCaratRate ?? 0;
-          const totalRate = t.totalRate ?? (diamondCarat * perCaratRate) ?? (t.amount || 0);
-          const terms = t.terms ?? 0;
-          const termsAmount = t.termsAmount ?? ((totalRate * terms) / 100);
-          const amountAfterTerms = t.amountAfterTerms ?? (totalRate - termsAmount);
-          const cvd = t.cvd ?? 0;
-          const finalNet = t.finalNet ?? (amountAfterTerms - cvd);
-          return {
-            ...t,
-            diamondCarat,
-            perCaratRate,
-            totalRate,
-            amount: totalRate,
-            terms,
-            termsAmount,
-            amountAfterTerms,
-            cvd,
-            finalNet,
-            dueDays: t.dueDays ?? 0,
-            sellType: t.sellType || 'Self',
-            otherSellType: t.otherSellType || '',
-          };
-        });
         return data;
       } catch {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(seedData));
-        return clone(seedData);
+        return clone(emptyData);
       }
     },
     save(data) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    }
+    },
   };
 }
 
@@ -139,6 +111,7 @@ export function supabaseRepository() {
         throw new Error('Supabase database is not configured.');
       }
 
+      // Fetch primary business tables
       const [dealersRes, transactionsRes, paymentsRes, bookkeepingRes] = await Promise.all([
         supabase.from('dealers').select('*'),
         supabase.from('transactions').select('*').order('date', { ascending: false }),
@@ -161,6 +134,35 @@ export function supabaseRepository() {
       if (bookkeepingRes.error) {
         console.error('Supabase fetch bookkeeping entries error:', bookkeepingRes.error);
         throw new Error('Unable to load bookkeeping data. Please try again.');
+      }
+
+      // Gracefully fetch daily_expenses if table exists, otherwise fallback to local/empty
+      let dailyExpenses = [];
+      try {
+        const { data: dailyData, error: dailyError } = await supabase
+          .from('daily_expenses')
+          .select('*')
+          .order('date', { ascending: false });
+
+        if (!dailyError && Array.isArray(dailyData)) {
+          dailyExpenses = dailyData.map((e) => ({
+            id: e.id,
+            userId: e.user_id,
+            date: e.date,
+            category: e.category,
+            amount: Number(e.amount) || 0,
+            paymentMethod: e.payment_method || 'UPI',
+            description: e.description || '',
+            createdAt: e.created_at,
+            updatedAt: e.updated_at,
+          }));
+        } else {
+          // If table not created yet, fallback to local storage
+          dailyExpenses = getLocalDailyExpenses();
+        }
+      } catch (err) {
+        console.warn('daily_expenses query notice (using local store until migration runs):', err);
+        dailyExpenses = getLocalDailyExpenses();
       }
 
       const mapDealerFromDb = (d) => ({
@@ -241,6 +243,7 @@ export function supabaseRepository() {
           createdAt: entry.created_at,
           updatedAt: entry.updated_at,
         })),
+        dailyExpenses,
       };
     },
 
@@ -436,6 +439,78 @@ export function supabaseRepository() {
         throw new Error('Unable to delete bookkeeping entry. Please try again.');
       }
     },
+
+    // Daily Finance Expense methods
+    async insertDailyExpense(expense) {
+      const currentLocals = getLocalDailyExpenses();
+      saveLocalDailyExpenses([expense, ...currentLocals.filter((e) => e.id !== expense.id)]);
+
+      if (!isSupabaseConfigured || !supabase) return;
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user?.id) return;
+
+        const { error } = await supabase.from('daily_expenses').insert({
+          id: expense.id,
+          user_id: user.id,
+          date: expense.date,
+          category: expense.category,
+          amount: expense.amount,
+          payment_method: expense.paymentMethod,
+          description: expense.description || '',
+        });
+        if (error) {
+          console.warn('daily_expenses insert notice (saved locally):', error);
+        }
+      } catch (err) {
+        console.warn('daily_expenses insert exception (saved locally):', err);
+      }
+    },
+
+    async updateDailyExpense(id, expense) {
+      const currentLocals = getLocalDailyExpenses();
+      saveLocalDailyExpenses(
+        currentLocals.map((e) => (e.id === id ? { ...e, ...expense } : e))
+      );
+
+      if (!isSupabaseConfigured || !supabase) return;
+      try {
+        const { error } = await supabase
+          .from('daily_expenses')
+          .update({
+            date: expense.date,
+            category: expense.category,
+            amount: expense.amount,
+            payment_method: expense.paymentMethod,
+            description: expense.description || '',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', id);
+        if (error) {
+          console.warn('daily_expenses update notice (saved locally):', error);
+        }
+      } catch (err) {
+        console.warn('daily_expenses update exception (saved locally):', err);
+      }
+    },
+
+    async deleteDailyExpense(id) {
+      const currentLocals = getLocalDailyExpenses();
+      saveLocalDailyExpenses(currentLocals.filter((e) => e.id !== id));
+
+      if (!isSupabaseConfigured || !supabase) return;
+      try {
+        const { error } = await supabase
+          .from('daily_expenses')
+          .delete()
+          .eq('id', id);
+        if (error) {
+          console.warn('daily_expenses delete notice (removed locally):', error);
+        }
+      } catch (err) {
+        console.warn('daily_expenses delete exception (removed locally):', err);
+      }
+    },
   };
 }
 
@@ -449,11 +524,14 @@ export const defaultSettings = {
   transactionAlerts: true,
   timeZone: 'Asia/Kolkata',
   defaultView: 'Dashboard',
+  theme: 'light',
 };
 
 export function loadSettings() {
   try {
-    return { ...defaultSettings, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') };
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return { ...defaultSettings, ...parsed };
   } catch {
     return { ...defaultSettings };
   }
@@ -491,24 +569,24 @@ export function formatChartAmount(value) {
 }
 
 export function transactionRows(data) {
-  return (data?.transactions || []).map(item => {
-    const dealer = (data?.dealers || []).find(entry => entry.id === (item.dealerId || item.sellerId));
+  return (data?.transactions || []).map((item) => {
+    const dealer = (data?.dealers || []).find((entry) => entry.id === (item.dealerId || item.sellerId));
     return [
       item.id,
       dealer?.name || 'Unknown dealer',
       new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
       money(item.totalRate || item.amount),
       item.status,
-      item.name
+      item.name,
     ];
   });
 }
 
 export function nextId(prefix, items = []) {
-  return `${prefix}-${String(Math.max(0, ...items.map(item => Number(item.id?.split('-')?.pop()) || 0)) + 1).padStart(4, '0')}`;
+  return `${prefix}-${String(Math.max(0, ...items.map((item) => Number(item.id?.split('-')?.pop()) || 0)) + 1).padStart(4, '0')}`;
 }
 
-// Comprehensive Analytics Calculation Engine
+// Comprehensive Analytics Calculation Engine with Multicolor assignment
 export function calculateAnalytics(transactions = [], payments = [], period = 'Monthly', monthCount = 6) {
   const parseDate = (d) => {
     if (!d) return null;
@@ -516,14 +594,14 @@ export function calculateAnalytics(transactions = [], payments = [], period = 'M
     return isNaN(parsed.getTime()) ? null : parsed;
   };
 
-  const validTrx = (transactions || []).map(t => ({
+  const validTrx = (transactions || []).map((t) => ({
     ...t,
-    _date: parseDate(t.date || t.created_at) || new Date()
+    _date: parseDate(t.date || t.created_at) || new Date(),
   }));
 
-  const validPayments = (payments || []).map(p => ({
+  const validPayments = (payments || []).map((p) => ({
     ...p,
-    _date: parseDate(p.date || p.created_at) || new Date()
+    _date: parseDate(p.date || p.created_at) || new Date(),
   }));
 
   let buckets = [];
@@ -532,12 +610,10 @@ export function calculateAnalytics(transactions = [], payments = [], period = 'M
   let periodEarnings = 0;
   let periodPaymentsTotal = 0;
 
-  // Determine date bounds from actual transactions or fallback to recent timeframe
-  const dates = validTrx.map(t => t._date.getTime());
+  const dates = validTrx.map((t) => t._date.getTime());
   const maxDate = dates.length ? new Date(Math.max(...dates)) : new Date();
 
   if (period === 'Weekly') {
-    // Generate 6 chronological weekly buckets ending on the week of latest activity
     const weeks = [];
     const ref = new Date(maxDate);
     const day = ref.getDay();
@@ -565,8 +641,8 @@ export function calculateAnalytics(transactions = [], payments = [], period = 'M
       });
     }
 
-    validTrx.forEach(t => {
-      weeks.forEach(w => {
+    validTrx.forEach((t) => {
+      weeks.forEach((w) => {
         if (t._date >= w.start && t._date <= w.end) {
           const rev = Number(t.totalRate || t.amount) || 0;
           const rate = Number(t.brokerageRate) || 0;
@@ -578,29 +654,28 @@ export function calculateAnalytics(transactions = [], payments = [], period = 'M
       });
     });
 
-    validPayments.forEach(p => {
-      weeks.forEach(w => {
+    validPayments.forEach((p) => {
+      weeks.forEach((w) => {
         if (p._date >= w.start && p._date <= w.end) {
           w.payments += Number(p.amount) || 0;
         }
       });
     });
 
-    buckets = weeks.map(w => ({
+    buckets = weeks.map((w, idx) => ({
       label: w.label,
       value: w.revenue,
       transactions: w.transactions,
       earnings: w.earnings,
       payments: w.payments,
+      color: MULTICOLOR_PALETTE[idx % MULTICOLOR_PALETTE.length],
     }));
 
     periodRevenue = weeks.reduce((sum, w) => sum + w.revenue, 0);
     periodTrxCount = weeks.reduce((sum, w) => sum + w.transactions, 0);
     periodEarnings = weeks.reduce((sum, w) => sum + w.earnings, 0);
     periodPaymentsTotal = weeks.reduce((sum, w) => sum + w.payments, 0);
-
   } else if (period === 'Quarterly') {
-    // Standard Q1 (Jan-Mar), Q2 (Apr-Jun), Q3 (Jul-Sep), Q4 (Oct-Dec)
     const quarters = [
       { label: 'Q1', months: [0, 1, 2], revenue: 0, transactions: 0, earnings: 0, payments: 0 },
       { label: 'Q2', months: [3, 4, 5], revenue: 0, transactions: 0, earnings: 0, payments: 0 },
@@ -608,9 +683,9 @@ export function calculateAnalytics(transactions = [], payments = [], period = 'M
       { label: 'Q4', months: [9, 10, 11], revenue: 0, transactions: 0, earnings: 0, payments: 0 },
     ];
 
-    validTrx.forEach(t => {
+    validTrx.forEach((t) => {
       const m = t._date.getMonth();
-      const q = quarters.find(item => item.months.includes(m));
+      const q = quarters.find((item) => item.months.includes(m));
       if (q) {
         const rev = Number(t.totalRate || t.amount) || 0;
         const rate = Number(t.brokerageRate) || 0;
@@ -621,27 +696,27 @@ export function calculateAnalytics(transactions = [], payments = [], period = 'M
       }
     });
 
-    validPayments.forEach(p => {
+    validPayments.forEach((p) => {
       const m = p._date.getMonth();
-      const q = quarters.find(item => item.months.includes(m));
+      const q = quarters.find((item) => item.months.includes(m));
       if (q) {
         q.payments += Number(p.amount) || 0;
       }
     });
 
-    buckets = quarters.map(q => ({
+    buckets = quarters.map((q, idx) => ({
       label: q.label,
       value: q.revenue,
       transactions: q.transactions,
       earnings: q.earnings,
       payments: q.payments,
+      color: MULTICOLOR_PALETTE[idx % MULTICOLOR_PALETTE.length],
     }));
 
     periodRevenue = quarters.reduce((sum, q) => sum + q.revenue, 0);
     periodTrxCount = quarters.reduce((sum, q) => sum + q.transactions, 0);
     periodEarnings = quarters.reduce((sum, q) => sum + q.earnings, 0);
     periodPaymentsTotal = quarters.reduce((sum, q) => sum + q.payments, 0);
-
   } else {
     // Monthly period
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -654,7 +729,7 @@ export function calculateAnalytics(transactions = [], payments = [], period = 'M
       payments: 0,
     }));
 
-    validTrx.forEach(t => {
+    validTrx.forEach((t) => {
       const m = t._date.getMonth();
       const target = months[m];
       if (target) {
@@ -667,7 +742,7 @@ export function calculateAnalytics(transactions = [], payments = [], period = 'M
       }
     });
 
-    validPayments.forEach(p => {
+    validPayments.forEach((p) => {
       const m = p._date.getMonth();
       const target = months[m];
       if (target) {
@@ -678,12 +753,13 @@ export function calculateAnalytics(transactions = [], payments = [], period = 'M
     const count = Math.max(3, Math.min(12, Number(monthCount) || 6));
     const latestMonth = maxDate.getMonth();
     const monthIndexes = Array.from({ length: count }, (_, offset) => (latestMonth - count + 1 + offset + 12) % 12);
-    buckets = monthIndexes.map((index) => months[index]).map(m => ({
+    buckets = monthIndexes.map((index) => months[index]).map((m, idx) => ({
       label: m.label,
       value: m.revenue,
       transactions: m.transactions,
       earnings: m.earnings,
       payments: m.payments,
+      color: MULTICOLOR_PALETTE[idx % MULTICOLOR_PALETTE.length],
     }));
 
     periodRevenue = months.reduce((sum, m) => sum + m.revenue, 0);
@@ -692,10 +768,10 @@ export function calculateAnalytics(transactions = [], payments = [], period = 'M
     periodPaymentsTotal = months.reduce((sum, m) => sum + m.payments, 0);
   }
 
-  const maxVal = Math.max(...buckets.map(b => b.value), 0);
+  const maxVal = Math.max(...buckets.map((b) => b.value), 0);
   const chartMax = maxVal > 0 ? Math.ceil((maxVal * 1.25) / 100000) * 100000 : 500000;
 
-  const chartData = buckets.map(b => ({
+  const chartData = buckets.map((b) => ({
     ...b,
     heightPercent: chartMax > 0 && b.value > 0 ? Math.max(10, Math.min(100, Math.round((b.value / chartMax) * 100))) : 0,
   }));
@@ -706,7 +782,7 @@ export function calculateAnalytics(transactions = [], payments = [], period = 'M
     Math.round(chartMax * 0.6),
     Math.round(chartMax * 0.4),
     Math.round(chartMax * 0.2),
-    0
+    0,
   ];
 
   const allTimeRevenue = validTrx.reduce((sum, t) => sum + (Number(t.totalRate || t.amount) || 0), 0);
@@ -736,3 +812,83 @@ export function calculateAnalytics(transactions = [], payments = [], period = 'M
   };
 }
 
+// Daily Finance Aggregation Helper
+export function calculateDailyFinanceSummaries(expenses = [], dateFilter = 'All', categoryFilter = 'All', specificDate = '') {
+  const now = new Date();
+  const todayIso = now.toISOString().slice(0, 10);
+  const thisMonthPrefix = now.toISOString().slice(0, 7); // YYYY-MM
+
+  // Start of current week (Monday)
+  const currentDay = now.getDay();
+  const diffToMon = now.getDate() - currentDay + (currentDay === 0 ? -6 : 1);
+  const monday = new Date(now);
+  monday.setDate(diffToMon);
+  monday.setHours(0, 0, 0, 0);
+
+  let todayTotal = 0;
+  let thisMonthTotal = 0;
+  let allTimeTotal = 0;
+
+  (expenses || []).forEach((e) => {
+    const amt = Number(e.amount) || 0;
+    allTimeTotal += amt;
+    if (e.date === todayIso) {
+      todayTotal += amt;
+    }
+    if (e.date && e.date.startsWith(thisMonthPrefix)) {
+      thisMonthTotal += amt;
+    }
+  });
+
+  // Filtered expense list
+  const filtered = (expenses || []).filter((e) => {
+    // Category filter
+    if (categoryFilter !== 'All' && e.category !== categoryFilter) {
+      return false;
+    }
+
+    // Date filter
+    if (dateFilter === 'Today') {
+      return e.date === todayIso;
+    }
+    if (dateFilter === 'This Week') {
+      const d = new Date(e.date);
+      return d >= monday && d <= now;
+    }
+    if (dateFilter === 'This Month') {
+      return e.date && e.date.startsWith(thisMonthPrefix);
+    }
+    if (dateFilter === 'Custom' && specificDate) {
+      return e.date === specificDate;
+    }
+    return true;
+  });
+
+  // Category breakdown on filtered records (or all-time if filtered is empty)
+  const categoryMap = {};
+  const dataset = filtered.length ? filtered : (expenses || []);
+  const datasetTotal = dataset.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+  dataset.forEach((e) => {
+    const cat = e.category || 'Other';
+    categoryMap[cat] = (categoryMap[cat] || 0) + (Number(e.amount) || 0);
+  });
+
+  const categoryBreakdown = Object.entries(categoryMap)
+    .map(([category, amount]) => ({
+      category,
+      amount,
+      percentage: datasetTotal > 0 ? Math.round((amount / datasetTotal) * 100) : 0,
+      color: getCategoryColor(category),
+    }))
+    .sort((a, b) => b.amount - a.amount);
+
+  return {
+    todayTotal,
+    thisMonthTotal,
+    allTimeTotal,
+    filteredExpenses: filtered,
+    filteredTotal: filtered.reduce((sum, e) => sum + (Number(e.amount) || 0), 0),
+    categoryBreakdown,
+  };
+}
