@@ -381,9 +381,13 @@ export function supabaseRepository() {
 
     async insertBookkeepingEntry(entry) {
       if (!isSupabaseConfigured || !supabase) return;
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user?.id) {
+        throw new Error('Your session has expired. Please sign in again.');
+      }
       const { error } = await supabase.from('bookkeeping_entries').insert({
         id: entry.id,
-        user_id: entry.userId,
+        user_id: user.id,
         entry_type: entry.entryType,
         date: entry.date,
         category: entry.category,
