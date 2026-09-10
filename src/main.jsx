@@ -927,14 +927,9 @@ function Dashboard({ onNavigate }) {
         title={`Good day, ${greetingName}`}
         description="Here's what's happening with your business today."
         action={
-          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-            <Button onClick={() => onNavigate("/new-transaction")} icon={Plus}>
-              New deal
-            </Button>
-            <Button secondary onClick={() => onNavigate("/daily-finance")} icon={Receipt}>
-              Daily Finance
-            </Button>
-          </div>
+          <Button onClick={() => onNavigate("/new-transaction")} icon={Plus}>
+            New deal
+          </Button>
         }
       />
 
@@ -2246,9 +2241,8 @@ function Deals({ onNavigate }) {
 }
 
 function DealDetails({ onNavigate }) {
-  const { data, updateTransaction, addPayment } = useData();
+  const { data, updateTransaction } = useData();
   const [editModal, setEditModal] = useState(false);
-  const [paymentModal, setPaymentModal] = useState(false);
   const id = new URLSearchParams(window.location.search).get("id") || data.transactions[0]?.id;
   const deal = data.transactions.find((item) => item.id === id) || data.transactions[0];
   const dealer = data.dealers.find((item) => item.id === (deal?.sellerId || deal?.dealerId));
@@ -2445,14 +2439,6 @@ function DealDetails({ onNavigate }) {
               </div>
             )}
             <div style={{ marginTop: "16px", display: "flex", justifyContent: "flex-end", gap: "8px" }}>
-              {remainingAmount > 0 && (
-                <Button
-                  icon={Plus}
-                  onClick={() => setPaymentModal(true)}
-                >
-                  Add Payment
-                </Button>
-              )}
               <Button secondary onClick={() => onNavigate("/payments")}>
                 Go to Payments
               </Button>
@@ -2468,25 +2454,6 @@ function DealDetails({ onNavigate }) {
         onSave={handleSaveDeal}
       />
 
-      <AddDealPaymentModal
-        open={paymentModal}
-        onClose={() => setPaymentModal(false)}
-        deal={{ deal, remaining: remainingAmount }}
-        onPaymentSaved={async (paymentInfo) => {
-          const newPayment = {
-            id: nextId("PAY", data.payments),
-            transactionId: deal.id,
-            dealerId: deal.dealerId || deal.sellerId || null,
-            date: paymentInfo.date,
-            amount: paymentInfo.amount,
-            method: paymentInfo.method,
-            status: "Completed",
-            notes: "",
-          };
-
-          await addPayment(newPayment);
-        }}
-      />
     </>
   );
 }
@@ -2660,7 +2627,7 @@ function EditDealModal({ open, onClose, transaction, onSave }) {
                   name="name"
                   value={form.name}
                   onChange={set}
-                  placeholder="e.g. Mumbai Lot #102"
+                  placeholder="e.g. Parcel 102"
                   required
                 />
               </label>
@@ -3064,7 +3031,7 @@ function NewDeal({ onNavigate }) {
                 name="name"
                 value={form.name}
                 onChange={set}
-                placeholder="e.g. Mumbai Lot #102"
+                  placeholder="e.g. Parcel 102"
                 required
               />
             </label>
@@ -3876,17 +3843,8 @@ function DeleteDealerModal({ dealer, onClose, onConfirm, isUsed }) {
 }
 
 function Payments({ onNavigate }) {
-  const { data, addPayment } = useData();
-  const [open, setOpen] = useState(false);
+  const { data } = useData();
   const [filterStatus, setFilterStatus] = useState("All");
-  const [form, setForm] = useState({
-    transactionId: "",
-    amount: "",
-    date: new Date().toISOString().slice(0, 10),
-    method: "Bank transfer",
-    notes: "",
-  });
-  const [error, setError] = useState("");
 
   const dealRows = (data.transactions || []).map((deal) => {
     const payments = (data.payments || []).filter((p) => p.transactionId === deal.id);
@@ -3911,66 +3869,6 @@ function Payments({ onNavigate }) {
   const totalPaid = dealRows.reduce((sum, row) => sum + Math.min(row.original, row.paid), 0);
   const totalRemaining = dealRows.reduce((sum, row) => sum + row.remaining, 0);
 
-  const selectedDealRow = dealRows.find((row) => row.deal.id === form.transactionId);
-  const paymentAmountNum = Number(String(form.amount).replace(/,/g, "")) || 0;
-
-  const setField = (event) => {
-    setForm((previous) => ({
-      ...previous,
-      [event.target.name]: event.target.value,
-    }));
-  };
-
-  const openAddPaymentForDeal = (dealId = "") => {
-    setForm({
-      transactionId: dealId || (dealRows.find((r) => r.remaining > 0)?.deal.id || ""),
-      amount: "",
-      date: new Date().toISOString().slice(0, 10),
-      method: "Bank transfer",
-      notes: "",
-    });
-    setError("");
-    setOpen(true);
-  };
-
-  const submitPayment = async (event) => {
-    event.preventDefault();
-    setError("");
-
-    if (!selectedDealRow) {
-      return setError("Please select a deal.");
-    }
-
-    if (!paymentAmountNum || paymentAmountNum <= 0) {
-      return setError("Please enter a valid payment amount greater than 0.");
-    }
-
-    if (paymentAmountNum > selectedDealRow.remaining) {
-      return setError(
-        `Payment amount (${money(paymentAmountNum)}) cannot exceed the remaining balance of ${money(selectedDealRow.remaining)}.`
-      );
-    }
-
-    try {
-      const newPayment = {
-        id: nextId("PAY", data.payments),
-        transactionId: selectedDealRow.deal.id,
-        dealerId: selectedDealRow.deal.dealerId || selectedDealRow.deal.sellerId,
-        date: form.date,
-        amount: paymentAmountNum,
-        method: form.method,
-        status: "Completed",
-        notes: form.notes.trim(),
-      };
-
-      await addPayment(newPayment);
-      setOpen(false);
-    } catch (err) {
-      console.error("Payment creation error:", err);
-      setError(err?.message || "Unable to record payment. Please try again.");
-    }
-  };
-
   const filteredDeals = dealRows.filter((row) => {
     if (filterStatus === "All") return true;
     return row.status === filterStatus;
@@ -3985,11 +3883,6 @@ function Payments({ onNavigate }) {
         eyebrow="Finance"
         title="Payments"
         description="Track and record partial and full payments against your deals."
-        action={
-          <Button onClick={() => openAddPaymentForDeal()} icon={Plus}>
-            Add Payment
-          </Button>
-        }
       />
 
       <div className="payment-summary">
@@ -4055,7 +3948,6 @@ function Payments({ onNavigate }) {
                     <th>Paid</th>
                     <th>Remaining</th>
                     <th>Status</th>
-                    <th style={{ textAlign: "right" }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -4073,21 +3965,6 @@ function Payments({ onNavigate }) {
                       </td>
                       <td>
                         <Status>{row.status}</Status>
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        {row.remaining > 0 ? (
-                          <button
-                            type="button"
-                            className="btn-action-primary"
-                            onClick={() => openAddPaymentForDeal(row.deal.id)}
-                          >
-                            <Plus size={13} /> Add Payment
-                          </button>
-                        ) : (
-                          <span style={{ fontSize: "11px", color: "var(--green)", fontWeight: 600 }}>
-                            <Check size={13} /> Settled
-                          </span>
-                        )}
                       </td>
                     </tr>
                   ))}
@@ -4109,18 +3986,6 @@ function Payments({ onNavigate }) {
                     <span>Paid: {money(row.paid)} • Rem: {money(row.remaining)}</span>
                     <Status>{row.status}</Status>
                   </div>
-                  {row.remaining > 0 && (
-                    <div style={{ marginTop: "4px" }}>
-                      <button
-                        type="button"
-                        className="btn-action-primary"
-                        style={{ width: "100%", justifyContent: "center" }}
-                        onClick={() => openAddPaymentForDeal(row.deal.id)}
-                      >
-                        <Plus size={13} /> Add Payment
-                      </button>
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
@@ -4133,117 +3998,6 @@ function Payments({ onNavigate }) {
           </div>
         )}
       </Panel>
-
-      {open && (
-        <div className="modal-overlay" onClick={() => setOpen(false)} role="dialog" aria-modal="true">
-          <div className="modal-card" style={{ maxWidth: "460px" }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-head">
-              <h3>Record Payment</h3>
-              <button className="icon-btn" onClick={() => setOpen(false)} aria-label="Close modal">
-                <X size={16} />
-              </button>
-            </div>
-            <form onSubmit={submitPayment}>
-              <div className="modal-body">
-                {error && <div className="login-error-banner" role="alert">{error}</div>}
-                
-                <label className="field-group">
-                  <span className="field-title">Select Deal</span>
-                  <select
-                    name="transactionId"
-                    value={form.transactionId}
-                    onChange={setField}
-                    required
-                  >
-                    <option value="">-- Choose a Deal --</option>
-                    {dealRows.map((row) => (
-                      <option key={row.deal.id} value={row.deal.id}>
-                        {row.deal.name} ({money(row.original)}) — Remaining: {money(row.remaining)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                {selectedDealRow && (
-                  <div style={{ background: "var(--line-subtle)", padding: "10px 12px", borderRadius: "8px", fontSize: "11px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                    <div>
-                      <span style={{ color: "var(--muted)" }}>Total Paid:</span>
-                      <strong style={{ display: "block", color: "var(--green)" }}>{money(selectedDealRow.paid)}</strong>
-                    </div>
-                    <div>
-                      <span style={{ color: "var(--muted)" }}>Remaining:</span>
-                      <strong style={{ display: "block", color: "var(--blue)" }}>{money(selectedDealRow.remaining)}</strong>
-                    </div>
-                  </div>
-                )}
-
-                <label className="field-group">
-                  <span className="field-title">Payment Amount</span>
-                  <div className="input-with-symbol">
-                    <span className="input-symbol">₹</span>
-                    <input
-                      name="amount"
-                      value={form.amount}
-                      onChange={(event) => {
-                        const raw = event.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
-                        setForm((previous) => ({
-                          ...previous,
-                          amount: raw ? formatIndianNumber(raw) : "",
-                        }));
-                      }}
-                      inputMode="decimal"
-                      placeholder="e.g. 50,000"
-                      required
-                    />
-                  </div>
-                </label>
-
-                <label className="field-group">
-                  <span className="field-title">Payment Date</span>
-                  <input
-                    name="date"
-                    type="date"
-                    value={form.date}
-                    onChange={setField}
-                    required
-                  />
-                </label>
-
-                <label className="field-group">
-                  <span className="field-title">Payment Method</span>
-                  <select name="method" value={form.method} onChange={setField}>
-                    <option>Bank transfer</option>
-                    <option>UPI</option>
-                    <option>Cash</option>
-                    <option>Cheque</option>
-                    <option>Other</option>
-                  </select>
-                </label>
-
-                <label className="field-group full">
-                  <span className="field-title">Reference / Notes</span>
-                  <textarea
-                    name="notes"
-                    value={form.notes}
-                    onChange={setField}
-                    placeholder="UTR, Cheque number, bank reference..."
-                    rows={2}
-                  />
-                </label>
-              </div>
-
-              <div className="modal-actions">
-                <Button secondary type="button" onClick={() => setOpen(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit">
-                  Record Payment
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </>
   );
 }

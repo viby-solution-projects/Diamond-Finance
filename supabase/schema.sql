@@ -332,24 +332,7 @@ FROM auth.users
 ON CONFLICT (id) DO UPDATE
 SET role = 'super_admin', status = 'active';
 
--- ==============================================================================
--- INITIAL SEED DATA (Only ABC Diamonds & Golden Carats)
--- ==============================================================================
-INSERT INTO public.dealers (id, name, location, type, contact, email, phone, status)
-VALUES
-  ('dealer-abc', 'ABC Diamonds', 'Mumbai, India', 'both', 'Alex Brown', 'alex@abcdiamonds.com', '+91 22 5550 0198', 'Active'),
-  ('dealer-golden', 'Golden Carats', 'Delhi, India', 'both', 'Maya Shah', 'maya@goldencarats.com', '+91 11 5550 0186', 'Active')
-ON CONFLICT (id) DO NOTHING;
+-- Production database schema is initialized with zero records.
+-- Dealers, Transactions, and Payments will be populated by authorized users in production.
 
-INSERT INTO public.transactions (id, name, dealer_id, seller_id, buyer_id, date, diamond_carat, per_carat_rate, total_rate, amount, terms, due_days, sell_type, other_sell_type, brokerage_rate, brokerage_earned, status, payment_method, notes)
-VALUES
-  ('TRX-20481', 'Mumbai Lot #102', 'dealer-abc', 'dealer-abc', 'dealer-golden', '2024-09-03', 10.00, 50000.00, 500000.00, 500000.00, 2.00, 30, 'Self', '', 5.00, 25000.00, 'Completed', 'Bank transfer', 'Round brilliant diamond lot.'),
-  ('TRX-20480', 'Delhi Lot #88', 'dealer-golden', 'dealer-golden', 'dealer-abc', '2024-09-02', 12.50, 80000.00, 1000000.00, 1000000.00, 2.50, 45, 'Other', 'Wholesale', 5.00, 50000.00, 'Pending', 'Bank transfer', 'Fancy cut diamond parcel.')
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO public.payments (id, transaction_id, dealer_id, date, amount, method, status)
-VALUES
-  ('PAY-8300', 'TRX-20481', 'dealer-abc', '2024-09-03', 500000.00, 'Bank transfer', 'Completed'),
-  ('PAY-8301', 'TRX-20480', 'dealer-golden', '2024-09-02', 1000000.00, 'Bank transfer', 'Pending')
-ON CONFLICT (id) DO NOTHING;
 

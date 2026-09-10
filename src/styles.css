@@ -1216,6 +1216,65 @@ td b {
 }
 
 @media (max-width: 767px) {
+  .content {
+    padding: 20px 12px 40px;
+  }
+  .page-header {
+    gap: 14px;
+  }
+  .page-header .button,
+  .page-header .btn,
+  .panel-actions .search,
+  .panel-actions .filter,
+  .panel-actions .select {
+    width: 100%;
+    min-height: 44px;
+  }
+  .panel-actions {
+    width: 100%;
+    align-items: stretch;
+  }
+  .filter-chip {
+    min-height: 44px;
+  }
+  .settings-field-grid,
+  .report-summary,
+  .report-layout,
+  .detail-layout,
+  .payment-summary,
+  .bookkeeping-summary {
+    grid-template-columns: 1fr;
+  }
+  .detail-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .payment-settlement-summary {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+  .detail-amount,
+  .dealer-profile-head,
+  .header-actions {
+    flex-wrap: wrap;
+  }
+  .header-actions,
+  .dealer-profile-head {
+    width: 100%;
+  }
+  .header-actions > *,
+  .dealer-profile-head > * {
+    width: 100%;
+  }
+  .segmented-control {
+    width: 100%;
+  }
+  .segmented-btn,
+  .link-btn-subtle,
+  .btn-action,
+  .btn-action-primary {
+    min-height: 44px;
+  }
   .desktop-data-table {
     display: none !important;
   }

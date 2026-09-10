@@ -1,8 +1,6 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient.js';
 
-const STORAGE_KEY = 'diamond-finance-data-v5';
 const SETTINGS_KEY = 'diamond-finance-settings-v2';
-const DAILY_EXPENSES_LOCAL_KEY = 'diamond-finance-daily-expenses-v1';
 
 export const emptyData = {
   transactions: [],
@@ -43,7 +41,7 @@ export function getCategoryColor(categoryName) {
     (c) => c.name.toLowerCase() === String(categoryName || '').trim().toLowerCase()
   );
   if (found) return found.color;
-  // Deterministic fallback from palette
+  // Deterministic palette selection for unknown categories
   let hash = 0;
   for (let i = 0; i < (categoryName || '').length; i++) {
     hash = categoryName.charCodeAt(i) + ((hash << 5) - hash);
@@ -61,46 +59,6 @@ export function dealerTypeLabel(type) {
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
-}
-
-function getLocalDailyExpenses() {
-  try {
-    const raw = localStorage.getItem(DAILY_EXPENSES_LOCAL_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveLocalDailyExpenses(expenses) {
-  try {
-    localStorage.setItem(DAILY_EXPENSES_LOCAL_KEY, JSON.stringify(expenses));
-  } catch (err) {
-    console.warn('Failed to save daily expenses locally:', err);
-  }
-}
-
-export function localRepository() {
-  return {
-    load() {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (!stored) {
-          return clone(emptyData);
-        }
-        const data = JSON.parse(stored);
-        if (!Array.isArray(data.transactions) || !Array.isArray(data.dealers) || !Array.isArray(data.payments)) {
-          return clone(emptyData);
-        }
-        return data;
-      } catch {
-        return clone(emptyData);
-      }
-    },
-    save(data) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    },
-  };
 }
 
 // Supabase Async Repository for Authenticated Finance Operations
@@ -136,34 +94,25 @@ export function supabaseRepository() {
         throw new Error('Unable to load bookkeeping data. Please try again.');
       }
 
-      // Gracefully fetch daily_expenses if table exists, otherwise fallback to local/empty
-      let dailyExpenses = [];
-      try {
-        const { data: dailyData, error: dailyError } = await supabase
-          .from('daily_expenses')
-          .select('*')
-          .order('date', { ascending: false });
-
-        if (!dailyError && Array.isArray(dailyData)) {
-          dailyExpenses = dailyData.map((e) => ({
-            id: e.id,
-            userId: e.user_id,
-            date: e.date,
-            category: e.category,
-            amount: Number(e.amount) || 0,
-            paymentMethod: e.payment_method || 'UPI',
-            description: e.description || '',
-            createdAt: e.created_at,
-            updatedAt: e.updated_at,
-          }));
-        } else {
-          // If table not created yet, fallback to local storage
-          dailyExpenses = getLocalDailyExpenses();
-        }
-      } catch (err) {
-        console.warn('daily_expenses query notice (using local store until migration runs):', err);
-        dailyExpenses = getLocalDailyExpenses();
+      const { data: dailyData, error: dailyError } = await supabase
+        .from('daily_expenses')
+        .select('*')
+        .order('date', { ascending: false });
+      if (dailyError) {
+        console.error('Supabase fetch daily expenses error:', dailyError);
+        throw new Error('Daily Finance is not available. Apply the daily_expenses migration and try again.');
       }
+      const dailyExpenses = (dailyData || []).map((e) => ({
+        id: e.id,
+        userId: e.user_id,
+        date: e.date,
+        category: e.category,
+        amount: Number(e.amount) || 0,
+        paymentMethod: e.payment_method || 'UPI',
+        description: e.description || '',
+        createdAt: e.created_at,
+        updatedAt: e.updated_at,
+      }));
 
       const mapDealerFromDb = (d) => ({
         id: d.id,
@@ -442,74 +391,44 @@ export function supabaseRepository() {
 
     // Daily Finance Expense methods
     async insertDailyExpense(expense) {
-      const currentLocals = getLocalDailyExpenses();
-      saveLocalDailyExpenses([expense, ...currentLocals.filter((e) => e.id !== expense.id)]);
+      if (!isSupabaseConfigured || !supabase) throw new Error('Supabase database is not configured.');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user?.id) throw new Error('Your session has expired. Please sign in again.');
+      const { error } = await supabase.from('daily_expenses').insert({
+        id: expense.id,
+        user_id: user.id,
+        date: expense.date,
+        category: expense.category,
+        amount: expense.amount,
+        payment_method: expense.paymentMethod,
+        description: expense.description || '',
+      });
+      if (error) throw new Error('Unable to save daily expense. Please try again.');
+    },
 
-      if (!isSupabaseConfigured || !supabase) return;
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user?.id) return;
-
-        const { error } = await supabase.from('daily_expenses').insert({
-          id: expense.id,
-          user_id: user.id,
+    async updateDailyExpense(id, expense) {
+      if (!isSupabaseConfigured || !supabase) throw new Error('Supabase database is not configured.');
+      const { error } = await supabase
+        .from('daily_expenses')
+        .update({
           date: expense.date,
           category: expense.category,
           amount: expense.amount,
           payment_method: expense.paymentMethod,
           description: expense.description || '',
-        });
-        if (error) {
-          console.warn('daily_expenses insert notice (saved locally):', error);
-        }
-      } catch (err) {
-        console.warn('daily_expenses insert exception (saved locally):', err);
-      }
-    },
-
-    async updateDailyExpense(id, expense) {
-      const currentLocals = getLocalDailyExpenses();
-      saveLocalDailyExpenses(
-        currentLocals.map((e) => (e.id === id ? { ...e, ...expense } : e))
-      );
-
-      if (!isSupabaseConfigured || !supabase) return;
-      try {
-        const { error } = await supabase
-          .from('daily_expenses')
-          .update({
-            date: expense.date,
-            category: expense.category,
-            amount: expense.amount,
-            payment_method: expense.paymentMethod,
-            description: expense.description || '',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', id);
-        if (error) {
-          console.warn('daily_expenses update notice (saved locally):', error);
-        }
-      } catch (err) {
-        console.warn('daily_expenses update exception (saved locally):', err);
-      }
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id);
+      if (error) throw new Error('Unable to update daily expense. Please try again.');
     },
 
     async deleteDailyExpense(id) {
-      const currentLocals = getLocalDailyExpenses();
-      saveLocalDailyExpenses(currentLocals.filter((e) => e.id !== id));
-
-      if (!isSupabaseConfigured || !supabase) return;
-      try {
-        const { error } = await supabase
-          .from('daily_expenses')
-          .delete()
-          .eq('id', id);
-        if (error) {
-          console.warn('daily_expenses delete notice (removed locally):', error);
-        }
-      } catch (err) {
-        console.warn('daily_expenses delete exception (removed locally):', err);
-      }
+      if (!isSupabaseConfigured || !supabase) throw new Error('Supabase database is not configured.');
+      const { error } = await supabase
+        .from('daily_expenses')
+        .delete()
+        .eq('id', id);
+      if (error) throw new Error('Unable to delete daily expense. Please try again.');
     },
   };
 }
