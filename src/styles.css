@@ -715,4 +715,27 @@ body,.app-shell,.main-area,.content{overflow-x:hidden}.table-scroll{overflow-x:v
   background: #fafcff;
 }
 
+.workspace-identity {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+  margin-bottom: 25px;
+}
+.workspace-identity > div:nth-child(2) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.workspace-identity b {
+  font-size: 12px;
+}
+.workspace-identity small {
+  font-size: 10px;
+  color: var(--muted);
+}
+
 

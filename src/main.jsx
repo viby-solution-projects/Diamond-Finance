@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import {
   BarChart3,
@@ -119,6 +119,7 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(false);
   const [dataError, setDataError] = useState("");
+  const profileMenuRef = useRef(null);
 
   const supabaseRepo = supabaseRepository();
 
@@ -362,6 +363,14 @@ function App() {
       document.body.style.overflow = "";
     };
   }, [drawer]);
+  React.useEffect(() => {
+    if (menu !== "profile") return undefined;
+    const handleOutsideClick = (event) => {
+      if (!profileMenuRef.current?.contains(event.target)) setMenu(null);
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [menu]);
   const go = (path) => {
     navigate(path);
     setDrawer(false);
@@ -493,7 +502,7 @@ function App() {
               ) : null}
               <strong>{current}</strong>
             </div>
-            <div className="top-actions">
+            <div className="top-actions" ref={profileMenuRef}>
               <button
                 className="avatar"
                 aria-label="Open profile"
@@ -589,13 +598,12 @@ function Sidebar({ current, onNavigate, open, onClose, role = "staff" }) {
             <X size={18} />
           </button>
         </div>
-        <div className="workspace-switch">
+        <div className="workspace-identity">
           <div className="workspace-icon">DB</div>
           <div>
             <b>Diamond Broker</b>
             <small>Business account</small>
           </div>
-          <ChevronDown size={15} />
         </div>
         <nav>
           <small className="nav-label">MAIN MENU</small>
@@ -3729,7 +3737,7 @@ function SettingsPage({ onNavigate }) {
             </label>
             <label className="settings-field">
               <span>Role</span>
-              <input value={profile?.role === "super_admin" ? "Super Admin" : "Staff"} readOnly />
+              <input value={profile?.role === "super_admin" ? "Super Admin" : profile?.role === "staff" ? "Staff" : "Not available"} readOnly />
               <small>Current workspace access level.</small>
             </label>
           </div>
