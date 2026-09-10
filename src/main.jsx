@@ -3721,7 +3721,7 @@ function Bookkeeping({ onNavigate }) {
     }
     const entry = {
       ...form,
-      id: editing?.id || nextId("BK", entries),
+      id: editing?.id || crypto.randomUUID(),
       userId: user.id,
       category: form.category.trim(),
       description: form.description.trim(),
