@@ -111,6 +111,8 @@ CREATE TABLE IF NOT EXISTS public.payments (
 CREATE TABLE IF NOT EXISTS public.bookkeeping_entries (
     id TEXT PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    dealer_id TEXT REFERENCES public.dealers(id) ON DELETE SET NULL,
+    transaction_id TEXT REFERENCES public.transactions(id) ON DELETE SET NULL,
     entry_type TEXT NOT NULL CHECK (entry_type IN ('Income', 'Expense')),
     date DATE NOT NULL DEFAULT CURRENT_DATE,
     category TEXT NOT NULL,
@@ -121,6 +123,11 @@ CREATE TABLE IF NOT EXISTS public.bookkeeping_entries (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+ALTER TABLE public.bookkeeping_entries
+    ADD COLUMN IF NOT EXISTS dealer_id TEXT REFERENCES public.dealers(id) ON DELETE SET NULL;
+ALTER TABLE public.bookkeeping_entries
+    ADD COLUMN IF NOT EXISTS transaction_id TEXT REFERENCES public.transactions(id) ON DELETE SET NULL;
 
 -- ==============================================================================
 -- INDEXES FOR OPTIMAL QUERY & ANALYTICS PERFORMANCE

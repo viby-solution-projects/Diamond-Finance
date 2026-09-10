@@ -3674,12 +3674,14 @@ function Bookkeeping({ onNavigate }) {
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState("");
   const [form, setForm] = useState({
-    entryType: "Income",
+    entryType: "Expense",
     date: new Date().toISOString().slice(0, 10),
-    category: "",
+    category: "Dealer Payment",
+    dealerId: "",
+    transactionId: "",
     description: "",
     amount: "",
-    paymentMethod: "Cash",
+    paymentMethod: "Bank Transfer",
     notes: "",
   });
 
@@ -3687,7 +3689,7 @@ function Bookkeeping({ onNavigate }) {
   const totalIncome = visibleEntries.filter((entry) => entry.entryType === "Income").reduce((sum, entry) => sum + entry.amount, 0);
   const totalExpenses = visibleEntries.filter((entry) => entry.entryType === "Expense").reduce((sum, entry) => sum + entry.amount, 0);
   const resetForm = () => {
-    setForm({ entryType: "Income", date: new Date().toISOString().slice(0, 10), category: "", description: "", amount: "", paymentMethod: "Cash", notes: "" });
+    setForm({ entryType: "Expense", date: new Date().toISOString().slice(0, 10), category: "Dealer Payment", dealerId: "", transactionId: "", description: "", amount: "", paymentMethod: "Bank Transfer", notes: "" });
     setEditing(null);
     setFormOpen(false);
     setError("");
@@ -3697,6 +3699,17 @@ function Bookkeeping({ onNavigate }) {
     setForm({ ...entry, amount: String(entry.amount) });
     setFormOpen(true);
     setError("");
+  };
+  const categories = form.entryType === "Income"
+    ? ["Diamond Sale", "Brokerage Income", "Dealer Payment Received", "Advance Received", "Other Income"]
+    : ["Diamond Purchase", "Dealer Payment", "Brokerage Expense", "Office Expense", "Salary", "Rent", "Utilities", "Bank Charges", "Travel", "Other Expense"];
+  const changeEntryType = (event) => {
+    const entryType = event.target.value;
+    setForm((previous) => ({
+      ...previous,
+      entryType,
+      category: entryType === "Income" ? "Diamond Sale" : "Dealer Payment",
+    }));
   };
   const submit = async (event) => {
     event.preventDefault();
@@ -3742,7 +3755,7 @@ function Bookkeeping({ onNavigate }) {
         eyebrow="Finance"
         title="Bookkeeping"
         description="Keep a simple record of money coming in and going out."
-        action={<Button onClick={() => { setEditing(null); setFormOpen(true); setError(""); }}>Add entry</Button>}
+        action={<Button onClick={() => { resetForm(); setFormOpen(true); }}>Add entry</Button>}
       />
       <div className="bookkeeping-summary">
         <div className="stat"><span className="stat-top">Total income</span><strong>{money(totalIncome)}</strong></div>
@@ -3753,13 +3766,15 @@ function Bookkeeping({ onNavigate }) {
         <form className="panel bookkeeping-form" onSubmit={submit}>
           <div className="panel-head"><h2>{editing ? "Edit entry" : "Add entry"}</h2><button type="button" className="icon-btn" onClick={resetForm} aria-label="Close entry form"><X size={17} /></button></div>
           <div className="form-grid">
-            <label className="field-group"><span className="field-title">Entry Type</span><select name="entryType" value={form.entryType} onChange={setField}><option>Income</option><option>Expense</option></select></label>
+            <label className="field-group"><span className="field-title">Entry Type</span><select name="entryType" value={form.entryType} onChange={changeEntryType}><option>Income</option><option>Expense</option></select></label>
             <label className="field-group"><span className="field-title">Date</span><input name="date" type="date" value={form.date} onChange={setField} required /></label>
-            <label className="field-group"><span className="field-title">Category</span><input name="category" value={form.category} onChange={setField} required /></label>
+            <label className="field-group"><span className="field-title">Category</span><select name="category" value={form.category} onChange={setField} required>{categories.map((category) => <option key={category}>{category}</option>)}</select></label>
             <label className="field-group"><span className="field-title">Amount</span><div className="input-with-symbol"><span className="input-symbol">₹</span><input name="amount" inputMode="decimal" value={form.amount} onChange={(event) => setForm((previous) => ({ ...previous, amount: event.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1") }))} required /></div></label>
-            <label className="field-group full"><span className="field-title">Description</span><input name="description" value={form.description} onChange={setField} required /></label>
-            <label className="field-group"><span className="field-title">Payment Method</span><select name="paymentMethod" value={form.paymentMethod} onChange={setField}><option>Cash</option><option>Bank Transfer</option><option>UPI</option><option>Cheque</option><option>Other</option></select></label>
-            <label className="field-group full"><span className="field-title">Notes</span><textarea name="notes" value={form.notes} onChange={setField} /></label>
+            <label className="field-group"><span className="field-title">Dealer / Party</span><select name="dealerId" value={form.dealerId} onChange={setField}><option value="">None / Not linked</option>{data.dealers.map((dealer) => <option key={dealer.id} value={dealer.id}>{dealer.name}</option>)}</select></label>
+            <label className="field-group"><span className="field-title">Transaction</span><select name="transactionId" value={form.transactionId} onChange={setField}><option value="">None / Not linked</option>{data.transactions.map((transaction) => { const dealer = data.dealers.find((item) => item.id === (transaction.dealerId || transaction.sellerId)); return <option key={transaction.id} value={transaction.id}>{transaction.name}{dealer ? ` - ${dealer.name}` : ""}</option>; })}</select></label>
+            <label className="field-group"><span className="field-title">Description</span><input name="description" value={form.description} onChange={setField} required /></label>
+            <label className="field-group"><span className="field-title">Payment Method</span><select name="paymentMethod" value={form.paymentMethod} onChange={setField}><option>Bank Transfer</option><option>UPI</option><option>Cash</option><option>Cheque</option><option>Other</option></select></label>
+            <label className="field-group full"><span className="field-title">Reference / Notes</span><textarea name="notes" value={form.notes} onChange={setField} /></label>
           </div>
           {error && <div className="form-error" role="alert">{error}</div>}
           <div className="form-actions"><Button secondary type="button" onClick={resetForm}>Cancel</Button><Button type="submit">{editing ? "Save Entry" : "Save Entry"}</Button></div>
