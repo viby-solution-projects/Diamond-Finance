@@ -83,7 +83,7 @@ export async function authSignIn(email, password) {
     profile = {
       id: data.user.id,
       email: data.user.email,
-      full_name: data.user.user_metadata?.full_name || (metaRole === 'super_admin' ? 'Super Admin' : (data.user.email?.split('@')[0] || 'User')),
+      full_name: data.user.user_metadata?.full_name || (data.user.email?.split('@')[0] || 'Your name'),
       role: metaRole || 'staff',
       status: 'active',
     };
@@ -194,7 +194,7 @@ export async function authGetSession() {
     const resolvedProfile = profile || {
       id: user.id,
       email: user.email,
-      full_name: user.user_metadata?.full_name || (user.user_metadata?.role === 'super_admin' ? 'Super Admin' : (user.email ? user.email.split('@')[0] : 'User')),
+      full_name: user.user_metadata?.full_name || (user.email ? user.email.split('@')[0] : 'Your name'),
       role: user.user_metadata?.role || 'staff',
       status: 'active',
     };

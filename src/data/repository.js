@@ -102,7 +102,7 @@ export function localRepository() {
           const termsAmount = t.termsAmount ?? ((totalRate * terms) / 100);
           const amountAfterTerms = t.amountAfterTerms ?? (totalRate - termsAmount);
           const cvd = t.cvd ?? 0;
-          const finalNet = t.finalNet ?? (amountAfterTerms + cvd);
+          const finalNet = t.finalNet ?? (amountAfterTerms - cvd);
           return {
             ...t,
             diamondCarat,
@@ -177,7 +177,7 @@ export function supabaseRepository() {
         const termsAmount = t.terms_amount != null ? Number(t.terms_amount) : ((totalRate * terms) / 100);
         const amountAfterTerms = t.amount_after_terms != null ? Number(t.amount_after_terms) : (totalRate - termsAmount);
         const cvd = Number(t.cvd) || 0;
-        const finalNet = t.final_net != null ? Number(t.final_net) : (amountAfterTerms + cvd);
+        const finalNet = t.final_net != null ? Number(t.final_net) : (amountAfterTerms - cvd);
 
         return {
           id: t.id,
@@ -364,11 +364,11 @@ export function supabaseRepository() {
 }
 
 export const defaultSettings = {
-  fullName: 'Jordan Davis',
-  email: 'jordan@diamond.com',
+  fullName: 'Your name',
+  email: '',
   businessName: 'Diamond Broker',
   currency: 'INR',
-  address: 'Bandra West, Mumbai, India',
+  address: '',
   paymentReminders: true,
   transactionAlerts: true,
   timeZone: 'Asia/Kolkata',

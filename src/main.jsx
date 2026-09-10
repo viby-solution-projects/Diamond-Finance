@@ -400,16 +400,16 @@ function App() {
   }
 
   const isSuperAdmin = profile?.role === "super_admin";
-  const userName = profile?.full_name || (isSuperAdmin ? "Super Admin" : (user?.user_metadata?.full_name || (user?.email ? user.email.split("@")[0] : "User")));
+  const userName = profile?.full_name || user?.user_metadata?.full_name || (isSuperAdmin ? "Super Admin" : (user?.email ? user.email.split("@")[0] : "Your name"));
   const userEmail = profile?.email || user?.email || "";
   const userInitials = isSuperAdmin
     ? "SA"
-    : userName
+    : (userName || "Your name")
         .split(" ")
         .map((w) => w[0])
         .join("")
         .slice(0, 2)
-        .toUpperCase();
+        .toUpperCase() || "YN";
 
   return (
     <DataContext.Provider
@@ -417,6 +417,7 @@ function App() {
         data,
         user,
         profile,
+        setProfile,
         addTransaction,
         updateTransaction,
         deleteTransaction,
@@ -561,7 +562,7 @@ function App() {
   );
 }
 
-function Sidebar({ current, onNavigate, open, onClose, userName = "Jordan Davis", userEmail = "jordan@diamond.com", userInitials = "JD", role = "staff" }) {
+function Sidebar({ current, onNavigate, open, onClose, userName = "Your name", userEmail = "", userInitials = "YN", role = "staff" }) {
   return (
     <>
       {open && <div className="scrim" onClick={onClose} />}
@@ -815,8 +816,8 @@ function MiniChart({ transactions, payments, period = "Monthly" }) {
 function Dashboard({ onNavigate }) {
   const { data, user, profile } = useData();
   const isSuperAdmin = profile?.role === "super_admin";
-  const userName = profile?.full_name || (isSuperAdmin ? "Super Admin" : (user?.user_metadata?.full_name || (user?.email ? user.email.split("@")[0] : "User")));
-  const greetingName = isSuperAdmin ? "Super Admin" : userName.split(" ")[0];
+  const userName = profile?.full_name || user?.user_metadata?.full_name || (isSuperAdmin ? "Super Admin" : (user?.email ? user.email.split("@")[0] : "Your name"));
+  const greetingName = isSuperAdmin ? "Super Admin" : (userName || "Your name").split(" ")[0] || "Your name";
   const revenue = data.transactions.reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0);
   const pending = data.transactions
     .filter((item) => item.status === "Pending")
@@ -1215,7 +1216,7 @@ function TransactionDetails({ onNavigate }) {
               <Detail label="Amount After Terms" value={money(transaction.amountAfterTerms)} />
             ) : null}
             {transaction.cvd ? (
-              <Detail label="CVD" value={`+${money(transaction.cvd)}`} />
+              <Detail label="CVD" value={`-${money(transaction.cvd)}`} />
             ) : null}
             {transaction.finalNet ? (
               <Detail label="Final Net" value={money(transaction.finalNet)} />
@@ -1365,7 +1366,7 @@ function EditTransactionModal({ open, onClose, transaction, onSave }) {
 
   const amountAfterTermsValue = Math.round((totalRateValue - termsAmountValue) * 100) / 100;
   const cvdValue = parseFloat(String(form.cvd || "0").replace(/,/g, "")) || 0;
-  const finalNetValue = Math.round((amountAfterTermsValue + cvdValue) * 100) / 100;
+  const finalNetValue = Math.round((amountAfterTermsValue - cvdValue) * 100) / 100;
 
   const brokerageRateValue = Number(form.brokerageRate) || 0;
   const brokerageEarned = (totalRateValue * (Number.isFinite(brokerageRateValue) ? brokerageRateValue : 5)) / 100;
@@ -1414,7 +1415,7 @@ function EditTransactionModal({ open, onClose, transaction, onSave }) {
     const totalRate = Math.round(carat * rate * 100) / 100;
     const termsAmount = Math.round(((totalRate * terms) / 100) * 100) / 100;
     const amountAfterTerms = Math.round((totalRate - termsAmount) * 100) / 100;
-    const finalNet = Math.round((amountAfterTerms + cvd) * 100) / 100;
+    const finalNet = Math.round((amountAfterTerms - cvd) * 100) / 100;
     const earned = Math.round(((totalRate * (Number.isFinite(brokerageRate) ? brokerageRate : 5)) / 100) * 100) / 100;
 
     try {
@@ -1565,6 +1566,26 @@ function EditTransactionModal({ open, onClose, transaction, onSave }) {
                   required
                 />
               </label>
+              <label className="field-group">
+                <span className="field-title">CVD Amount</span>
+                <div className="input-with-symbol">
+                  <span className="input-symbol">₹</span>
+                  <input
+                    name="cvd"
+                    type="text"
+                    inputMode="decimal"
+                    value={form.cvd}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+                      setForm((p) => ({
+                        ...p,
+                        cvd: raw ? formatIndianNumber(raw) : "",
+                      }));
+                    }}
+                    placeholder="0"
+                  />
+                </div>
+              </label>
               <div className="field-group">
                 <span className="field-title">Sell Type</span>
                 <div className="segmented-control" role="radiogroup" aria-label="Sell Type">
@@ -1636,33 +1657,14 @@ function EditTransactionModal({ open, onClose, transaction, onSave }) {
               <div className="summary-row cvd-row">
                 <div className="summary-label">
                   <span className="cvd-label-text">CVD</span>
-                  <small className="summary-hint">Additional value</small>
                 </div>
-                <div className="cvd-input-wrap">
-                  <div className="input-with-symbol">
-                    <span className="input-symbol">₹</span>
-                    <input
-                      name="cvd"
-                      type="text"
-                      inputMode="decimal"
-                      value={form.cvd}
-                      onChange={(e) => {
-                        const raw = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
-                        setForm((p) => ({
-                          ...p,
-                          cvd: raw ? formatIndianNumber(raw) : "",
-                        }));
-                      }}
-                      placeholder="0"
-                    />
-                  </div>
-                </div>
+                <div className="summary-value deduction">{cvdValue > 0 ? `-${money(cvdValue)}` : money(0)}</div>
               </div>
               <div className="summary-divider" />
               <div className="summary-row final-net-row">
                 <div className="summary-label">
                   <span className="final-net-title">Final Net</span>
-                  <small className="summary-hint">Amount After Terms + CVD</small>
+                  <small className="summary-hint">Amount After Terms − CVD</small>
                 </div>
                 <div className="final-net-value">{money(finalNetValue)}</div>
               </div>
@@ -1810,7 +1812,7 @@ function NewTransaction({ onNavigate }) {
 
   const amountAfterTermsValue = Math.round((totalRateValue - termsAmountValue) * 100) / 100;
   const cvdValue = parseFloat(String(form.cvd || "0").replace(/,/g, "")) || 0;
-  const finalNetValue = Math.round((amountAfterTermsValue + cvdValue) * 100) / 100;
+  const finalNetValue = Math.round((amountAfterTermsValue - cvdValue) * 100) / 100;
 
   const brokerageRateValue = Number(form.brokerageRate) || 0;
   const brokerageEarned = (totalRateValue * (Number.isFinite(brokerageRateValue) ? brokerageRateValue : 5)) / 100;
@@ -1862,7 +1864,7 @@ function NewTransaction({ onNavigate }) {
     const totalRate = Math.round(carat * rate * 100) / 100;
     const termsAmount = Math.round(((totalRate * terms) / 100) * 100) / 100;
     const amountAfterTerms = Math.round((totalRate - termsAmount) * 100) / 100;
-    const finalNet = Math.round((amountAfterTerms + cvd) * 100) / 100;
+    const finalNet = Math.round((amountAfterTerms - cvd) * 100) / 100;
     const earned = Math.round(((totalRate * (Number.isFinite(brokerageRate) ? brokerageRate : 5)) / 100) * 100) / 100;
 
     const transaction = {
@@ -2033,6 +2035,26 @@ function NewTransaction({ onNavigate }) {
                 required
               />
             </label>
+              <label className="field-group">
+                <span className="field-title">CVD Amount</span>
+                <div className="input-with-symbol">
+                  <span className="input-symbol">₹</span>
+                  <input
+                    name="cvd"
+                    type="text"
+                    inputMode="decimal"
+                    value={form.cvd}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+                      setForm((p) => ({
+                        ...p,
+                        cvd: raw ? formatIndianNumber(raw) : "",
+                      }));
+                    }}
+                    placeholder="0"
+                  />
+                </div>
+              </label>
 
             <div className="field-group">
               <span className="field-title">Sell Type</span>
@@ -2116,29 +2138,9 @@ function NewTransaction({ onNavigate }) {
 
             <div className="summary-row cvd-row">
               <div className="summary-label">
-                <label htmlFor="new-cvd-input" className="cvd-label-text">CVD</label>
-                <small className="summary-hint">Additional value</small>
+                <span className="cvd-label-text">CVD</span>
               </div>
-              <div className="cvd-input-wrap">
-                <div className="input-with-symbol">
-                  <span className="input-symbol">₹</span>
-                  <input
-                    id="new-cvd-input"
-                    name="cvd"
-                    type="text"
-                    inputMode="decimal"
-                    value={form.cvd}
-                    onChange={(e) => {
-                      const raw = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
-                      setForm((p) => ({
-                        ...p,
-                        cvd: raw ? formatIndianNumber(raw) : "",
-                      }));
-                    }}
-                    placeholder="0"
-                  />
-                </div>
-              </div>
+              <div className="summary-value deduction">{cvdValue > 0 ? `-${money(cvdValue)}` : money(0)}</div>
             </div>
 
             <div className="summary-divider" />
@@ -2146,7 +2148,7 @@ function NewTransaction({ onNavigate }) {
             <div className="summary-row final-net-row">
               <div className="summary-label">
                 <span className="final-net-title">Final Net</span>
-                <small className="summary-hint">Amount After Terms + CVD</small>
+                <small className="summary-hint">Amount After Terms − CVD</small>
               </div>
               <div className="final-net-value">{money(finalNetValue)}</div>
             </div>
@@ -3643,8 +3645,24 @@ function MobileEarnings({ onNavigate }) {
   );
 }
 function SettingsPage({ onNavigate }) {
+  const { user, profile, setProfile } = useData();
   const [settings, setSettings] = useState(loadSettings);
   const [savedNotice, setSavedNotice] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const nextSettings = loadSettings();
+    const activeFullName = profile?.full_name || user?.user_metadata?.full_name || "Your name";
+    setSettings({
+      ...nextSettings,
+      fullName: activeFullName,
+      email: profile?.email || user?.email || nextSettings.email || "",
+      businessName: nextSettings.businessName || "Diamond Broker",
+      businessAddress: nextSettings.address || "",
+      address: nextSettings.address || "",
+    });
+  }, [profile, user]);
 
   const setField = (event) => {
     const { name, value, checked, type } = event.target;
@@ -3654,10 +3672,32 @@ function SettingsPage({ onNavigate }) {
     }));
   };
 
-  const handleSave = () => {
-    saveSettings(settings);
-    setSavedNotice(true);
-    setTimeout(() => setSavedNotice(false), 3500);
+  const handleSave = async () => {
+    setError("");
+    setSaving(true);
+    try {
+      const trimmedName = (settings.fullName || "").trim();
+      if (user?.id && trimmedName) {
+        await updateProfile(user.id, { full_name: trimmedName });
+      }
+      const nextSettings = {
+        ...settings,
+        fullName: trimmedName || "Your name",
+        email: profile?.email || user?.email || settings.email || "",
+        address: settings.address || settings.businessAddress || "",
+      };
+      saveSettings(nextSettings);
+      if (profile && user?.id) {
+        setProfile({ ...profile, full_name: trimmedName || "Your name", email: profile.email || user.email || "" });
+      }
+      setSavedNotice(true);
+      setTimeout(() => setSavedNotice(false), 3500);
+    } catch (err) {
+      console.error("Settings save failed:", err);
+      setError(err?.message || "Unable to save your account details. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -3669,13 +3709,20 @@ function SettingsPage({ onNavigate }) {
         eyebrow="Workspace"
         title="Settings"
         description="Manage your account, business details and operating preferences."
-        action={<Button onClick={handleSave}>Save changes</Button>}
+        action={<Button onClick={handleSave} disabled={saving}>{saving ? "Saving..." : "Save changes"}</Button>}
       />
 
       {savedNotice && (
         <div className="notice" style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
           <CheckCircle2 size={16} color="var(--green)" />
           <span>Settings saved successfully.</span>
+        </div>
+      )}
+
+      {error && (
+        <div className="login-error-banner" style={{ marginBottom: "16px" }} role="alert">
+          <AlertCircle size={16} />
+          <span>{error}</span>
         </div>
       )}
 
@@ -3687,13 +3734,18 @@ function SettingsPage({ onNavigate }) {
           <div className="settings-field-grid">
             <label className="settings-field">
               <span>Full name</span>
-              <input name="fullName" value={settings.fullName} onChange={setField} />
+              <input name="fullName" value={settings.fullName || "Your name"} onChange={setField} />
               <small>Used across your finance workspace.</small>
             </label>
             <label className="settings-field">
               <span>Business email</span>
-              <input name="email" type="email" value={settings.email} onChange={setField} />
-              <small>Primary contact for alerts and exports.</small>
+              <input name="email" type="email" value={settings.email || user?.email || ""} readOnly />
+              <small>Managed by your authenticated Supabase account.</small>
+            </label>
+            <label className="settings-field">
+              <span>Role</span>
+              <input value={profile?.role === "super_admin" ? "Super Admin" : "Staff"} readOnly />
+              <small>Current workspace access level.</small>
             </label>
           </div>
         </section>
@@ -3705,12 +3757,12 @@ function SettingsPage({ onNavigate }) {
           <div className="settings-field-grid">
             <label className="settings-field">
               <span>Business name</span>
-              <input name="businessName" value={settings.businessName} onChange={setField} />
+              <input name="businessName" value={settings.businessName || "Diamond Broker"} onChange={setField} />
               <small>Displayed on reports and exports.</small>
             </label>
             <label className="settings-field">
               <span>Default currency</span>
-              <select name="currency" value={settings.currency} onChange={setField}>
+              <select name="currency" value={settings.currency || "INR"} onChange={setField}>
                 <option value="INR">INR - Indian Rupee</option>
                 <option value="USD">USD - US Dollar</option>
               </select>
@@ -3718,7 +3770,7 @@ function SettingsPage({ onNavigate }) {
             </label>
             <label className="settings-field full-width-field">
               <span>Business address</span>
-              <input name="address" value={settings.address} onChange={setField} />
+              <input name="address" value={settings.address || ""} onChange={setField} />
               <small>Optional detail for dealer records.</small>
             </label>
           </div>
@@ -3734,7 +3786,7 @@ function SettingsPage({ onNavigate }) {
                 <span>Payment reminders</span>
                 <small>Notify me when a payment or payout is pending.</small>
               </div>
-              <input name="paymentReminders" type="checkbox" checked={settings.paymentReminders} onChange={setField} />
+              <input name="paymentReminders" type="checkbox" checked={Boolean(settings.paymentReminders)} onChange={setField} />
             </label>
             <label className="settings-toggle">
               <div>
@@ -3743,7 +3795,7 @@ function SettingsPage({ onNavigate }) {
                   Alert me when new activity is added to the workspace.
                 </small>
               </div>
-              <input name="transactionAlerts" type="checkbox" checked={settings.transactionAlerts} onChange={setField} />
+              <input name="transactionAlerts" type="checkbox" checked={Boolean(settings.transactionAlerts)} onChange={setField} />
             </label>
           </div>
         </section>
@@ -3755,7 +3807,7 @@ function SettingsPage({ onNavigate }) {
           <div className="settings-field-grid">
             <label className="settings-field">
               <span>Time zone</span>
-              <select name="timeZone" value={settings.timeZone} onChange={setField}>
+              <select name="timeZone" value={settings.timeZone || "Asia/Kolkata"} onChange={setField}>
                 <option value="Asia/Kolkata">Asia/Kolkata</option>
                 <option value="America/New_York">America/New_York</option>
               </select>
@@ -3763,7 +3815,7 @@ function SettingsPage({ onNavigate }) {
             </label>
             <label className="settings-field">
               <span>Default view</span>
-              <select name="defaultView" value={settings.defaultView} onChange={setField}>
+              <select name="defaultView" value={settings.defaultView || "Dashboard"} onChange={setField}>
                 <option>Dashboard</option>
                 <option>Transactions</option>
                 <option>Reports</option>
@@ -4384,7 +4436,7 @@ function SuperAdminPage({ onNavigate }) {
                             {(u.full_name || u.email || "U").slice(0, 2).toUpperCase()}
                           </div>
                           <div>
-                            <b>{u.full_name || "Staff Member"}</b>
+                            <b>{u.full_name || u.email?.split("@")[0] || "Your name"}</b>
                             <span className="table-id">{u.email}</span>
                           </div>
                         </div>
