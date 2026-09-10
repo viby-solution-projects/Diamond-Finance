@@ -777,4 +777,114 @@ body,.app-shell,.main-area,.content{overflow-x:hidden}.table-scroll{overflow-x:v
   }
 }
 
+.bookkeeping-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.bookkeeping-summary .stat > strong {
+  font-family: Manrope, sans-serif;
+  font-size: 21px;
+}
+.bookkeeping-form {
+  max-width: 790px;
+  margin-bottom: 20px;
+}
+.bookkeeping-form .form-error {
+  margin: 0 20px 15px;
+}
+.bookkeeping-filter {
+  margin-top: 0;
+  min-height: 34px;
+}
+.bookkeeping-filter .segmented-btn {
+  height: 28px;
+  padding: 0 11px;
+  font-size: 11px;
+}
+.bookkeeping-list {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px 16px;
+}
+.bookkeeping-entry {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--blue);
+  padding: 15px 16px;
+  background: #fff;
+}
+.bookkeeping-entry.expense {
+  border-left-color: #c94a53;
+}
+.bookkeeping-entry-main {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.bookkeeping-entry-main > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.bookkeeping-entry-main span,
+.bookkeeping-entry-main small,
+.bookkeeping-entry-footer span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.bookkeeping-entry-main strong:first-child {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.bookkeeping-amount {
+  color: var(--green);
+  font-family: Manrope, sans-serif;
+  font-size: 16px;
+  white-space: nowrap;
+}
+.bookkeeping-entry.expense .bookkeeping-amount {
+  color: #c94a53;
+}
+.bookkeeping-entry-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #edf0f4;
+}
+.bookkeeping-entry-footer div {
+  display: flex;
+  gap: 12px;
+}
+
+  .bookkeeping-summary {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .bookkeeping-summary .stat {
+    min-height: auto;
+  }
+  .bookkeeping-form .form-grid {
+    grid-template-columns: 1fr;
+  }
+  .bookkeeping-filter {
+    width: 100%;
+  }
+  .bookkeeping-filter .segmented-btn {
+    flex: 1;
+  }
+  .bookkeeping-list {
+    padding-inline: 0;
+  }
+  .bookkeeping-entry-main {
+    gap: 10px;
+  }
+  .bookkeeping-amount {
+    font-size: 14px;
+  }
+
 

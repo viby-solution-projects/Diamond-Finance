@@ -70,6 +70,7 @@ const navItems = [
   { label: "Payments", icon: CreditCard, path: "/payments" },
   { label: "Earnings", icon: BarChart3, path: "/earnings" },
   { label: "Analytics", icon: FileBarChart, path: "/analytics" },
+  { label: "Bookkeeping", icon: Wallet, path: "/bookkeeping" },
   { label: "Settings", icon: Settings, path: "/settings" },
 ];
 
@@ -113,7 +114,7 @@ function App() {
   const [current, setCurrent] = useState(routeName());
   const [drawer, setDrawer] = useState(false);
   const [menu, setMenu] = useState(null);
-  const [data, setData] = useState({ transactions: [], dealers: [], payments: [] });
+  const [data, setData] = useState({ transactions: [], dealers: [], payments: [], bookkeeping: [] });
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -150,7 +151,7 @@ function App() {
         if (event === "SIGNED_OUT" || !session?.user) {
           setUser(null);
           setProfile(null);
-          setData({ transactions: [], dealers: [], payments: [] });
+          setData({ transactions: [], dealers: [], payments: [], bookkeeping: [] });
           if (window.location.pathname !== "/login") {
             navigate("/login");
           }
@@ -192,7 +193,7 @@ function App() {
     if (user?.id) {
       loadData();
     } else {
-      setData({ transactions: [], dealers: [], payments: [] });
+      setData({ transactions: [], dealers: [], payments: [], bookkeeping: [] });
     }
   }, [user?.id]);
 
@@ -200,7 +201,7 @@ function App() {
     await authSignOut();
     setUser(null);
     setProfile(null);
-    setData({ transactions: [], dealers: [], payments: [] });
+    setData({ transactions: [], dealers: [], payments: [], bookkeeping: [] });
     setMenu(null);
     navigate("/login");
   };
@@ -267,6 +268,24 @@ function App() {
       alert(err.message || "Failed to record payment.");
       throw err;
     }
+  };
+
+  const addBookkeepingEntry = async (entry) => {
+    await supabaseRepo.insertBookkeepingEntry(entry);
+    setData((prev) => ({ ...prev, bookkeeping: [entry, ...(prev.bookkeeping || [])] }));
+  };
+
+  const updateBookkeepingEntry = async (id, updated) => {
+    await supabaseRepo.updateBookkeepingEntry(id, updated);
+    setData((prev) => ({
+      ...prev,
+      bookkeeping: (prev.bookkeeping || []).map((entry) => entry.id === id ? { ...entry, ...updated } : entry),
+    }));
+  };
+
+  const deleteBookkeepingEntry = async (id) => {
+    await supabaseRepo.deleteBookkeepingEntry(id);
+    setData((prev) => ({ ...prev, bookkeeping: (prev.bookkeeping || []).filter((entry) => entry.id !== id) }));
   };
 
   const addDealer = async (dealer) => {
@@ -430,6 +449,9 @@ function App() {
         updateTransaction,
         deleteTransaction,
         addPayment,
+        addBookkeepingEntry,
+        updateBookkeepingEntry,
+        deleteBookkeepingEntry,
         addDealer,
         updateDealer,
         deleteDealer,
@@ -667,6 +689,7 @@ function Page({ current, onNavigate }) {
   if (current === "Dealers") return <Dealers onNavigate={onNavigate} />;
   if (current === "Payments") return <Payments onNavigate={onNavigate} />;
   if (current === "Earnings") return <Earnings onNavigate={onNavigate} />;
+  if (current === "Bookkeeping") return <Bookkeeping onNavigate={onNavigate} />;
   if (current === "Reports" || current === "Analytics")
     return <Analytics onNavigate={onNavigate} />;
   if (current === "Settings") return <SettingsPage onNavigate={onNavigate} />;
@@ -798,17 +821,18 @@ function DynamicBarChart({ chartData, yTicks = [] }) {
   );
 }
 
-function MiniChart({ transactions, payments, period = "Monthly" }) {
+function MiniChart({ transactions, payments, period = "Monthly", monthCount = 6 }) {
   const { data } = useData();
   const trx = transactions && transactions.length ? transactions : (data?.transactions || []);
   const pay = payments && payments.length ? payments : (data?.payments || []);
-  const analytics = calculateAnalytics(trx, pay, period);
+  const analytics = calculateAnalytics(trx, pay, period, monthCount);
 
   return <DynamicBarChart chartData={analytics.chartData} yTicks={analytics.yTicks} />;
 }
 
 function Dashboard({ onNavigate }) {
   const { data, user, profile } = useData();
+  const [revenueRange, setRevenueRange] = useState("6");
   const isSuperAdmin = profile?.role === "super_admin";
   const userName = profile?.full_name || user?.user_metadata?.full_name || (isSuperAdmin ? "Super Admin" : (user?.email ? user.email.split("@")[0] : "Your name"));
   const greetingName = isSuperAdmin ? "Super Admin" : (userName || "Your name").split(" ")[0] || "Your name";
@@ -863,9 +887,12 @@ function Dashboard({ onNavigate }) {
             <select
               className="select"
               aria-label="Revenue range"
-              defaultValue="6"
+              value={revenueRange}
+              onChange={(event) => setRevenueRange(event.target.value)}
             >
+              <option value="3">Last 3 months</option>
               <option value="6">Last 6 months</option>
+              <option value="9">Last 9 months</option>
               <option value="12">Last 12 months</option>
             </select>
           }
@@ -877,7 +904,7 @@ function Dashboard({ onNavigate }) {
               <ArrowUpRight size={13} /> 12.5%
             </span>
           </div>
-          <MiniChart />
+          <MiniChart period="Monthly" monthCount={Number(revenueRange)} />
         </Panel>
       </div>
       <div className="dashboard-grid bottom-grid">
@@ -3638,6 +3665,121 @@ function MobileEarnings({ onNavigate }) {
     </>
   );
 }
+
+function Bookkeeping({ onNavigate }) {
+  const { data, user, addBookkeepingEntry, updateBookkeepingEntry, deleteBookkeepingEntry } = useData();
+  const entries = data.bookkeeping || [];
+  const [filter, setFilter] = useState("All");
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [error, setError] = useState("");
+  const [form, setForm] = useState({
+    entryType: "Income",
+    date: new Date().toISOString().slice(0, 10),
+    category: "",
+    description: "",
+    amount: "",
+    paymentMethod: "Cash",
+    notes: "",
+  });
+
+  const visibleEntries = entries.filter((entry) => filter === "All" || entry.entryType === filter);
+  const totalIncome = visibleEntries.filter((entry) => entry.entryType === "Income").reduce((sum, entry) => sum + entry.amount, 0);
+  const totalExpenses = visibleEntries.filter((entry) => entry.entryType === "Expense").reduce((sum, entry) => sum + entry.amount, 0);
+  const resetForm = () => {
+    setForm({ entryType: "Income", date: new Date().toISOString().slice(0, 10), category: "", description: "", amount: "", paymentMethod: "Cash", notes: "" });
+    setEditing(null);
+    setFormOpen(false);
+    setError("");
+  };
+  const openEdit = (entry) => {
+    setEditing(entry);
+    setForm({ ...entry, amount: String(entry.amount) });
+    setFormOpen(true);
+    setError("");
+  };
+  const submit = async (event) => {
+    event.preventDefault();
+    setError("");
+    const amount = Number(String(form.amount).replace(/,/g, ""));
+    if (!form.date || !form.category.trim() || !form.description.trim() || !Number.isFinite(amount) || amount <= 0) {
+      setError("Enter a date, category, description, and a positive amount.");
+      return;
+    }
+    const entry = {
+      ...form,
+      id: editing?.id || nextId("BK", entries),
+      userId: user.id,
+      category: form.category.trim(),
+      description: form.description.trim(),
+      amount,
+      notes: form.notes.trim(),
+    };
+    try {
+      if (editing) await updateBookkeepingEntry(editing.id, entry);
+      else await addBookkeepingEntry(entry);
+      resetForm();
+    } catch (err) {
+      setError(err?.message || "Unable to save bookkeeping entry. Please try again.");
+    }
+  };
+  const remove = async (entry) => {
+    if (!window.confirm(`Delete ${entry.description}?`)) return;
+    try {
+      await deleteBookkeepingEntry(entry.id);
+    } catch (err) {
+      setError(err?.message || "Unable to delete bookkeeping entry. Please try again.");
+    }
+  };
+  const setField = (event) => setForm((previous) => ({ ...previous, [event.target.name]: event.target.value }));
+
+  return (
+    <>
+      <PageHeader
+        backTo="/"
+        backLabel="Back to Dashboard"
+        onNavigate={onNavigate}
+        eyebrow="Finance"
+        title="Bookkeeping"
+        description="Keep a simple record of money coming in and going out."
+        action={<Button onClick={() => { setEditing(null); setFormOpen(true); setError(""); }}>Add entry</Button>}
+      />
+      <div className="bookkeeping-summary">
+        <div className="stat"><span className="stat-top">Total income</span><strong>{money(totalIncome)}</strong></div>
+        <div className="stat"><span className="stat-top">Total expenses</span><strong>{money(totalExpenses)}</strong></div>
+        <div className="stat"><span className="stat-top">Net balance</span><strong>{money(totalIncome - totalExpenses)}</strong></div>
+      </div>
+      {formOpen && (
+        <form className="panel bookkeeping-form" onSubmit={submit}>
+          <div className="panel-head"><h2>{editing ? "Edit entry" : "Add entry"}</h2><button type="button" className="icon-btn" onClick={resetForm} aria-label="Close entry form"><X size={17} /></button></div>
+          <div className="form-grid">
+            <label className="field-group"><span className="field-title">Entry Type</span><select name="entryType" value={form.entryType} onChange={setField}><option>Income</option><option>Expense</option></select></label>
+            <label className="field-group"><span className="field-title">Date</span><input name="date" type="date" value={form.date} onChange={setField} required /></label>
+            <label className="field-group"><span className="field-title">Category</span><input name="category" value={form.category} onChange={setField} required /></label>
+            <label className="field-group"><span className="field-title">Amount</span><div className="input-with-symbol"><span className="input-symbol">₹</span><input name="amount" inputMode="decimal" value={form.amount} onChange={(event) => setForm((previous) => ({ ...previous, amount: event.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1") }))} required /></div></label>
+            <label className="field-group full"><span className="field-title">Description</span><input name="description" value={form.description} onChange={setField} required /></label>
+            <label className="field-group"><span className="field-title">Payment Method</span><select name="paymentMethod" value={form.paymentMethod} onChange={setField}><option>Cash</option><option>Bank Transfer</option><option>UPI</option><option>Cheque</option><option>Other</option></select></label>
+            <label className="field-group full"><span className="field-title">Notes</span><textarea name="notes" value={form.notes} onChange={setField} /></label>
+          </div>
+          {error && <div className="form-error" role="alert">{error}</div>}
+          <div className="form-actions"><Button secondary type="button" onClick={resetForm}>Cancel</Button><Button type="submit">{editing ? "Save Entry" : "Save Entry"}</Button></div>
+        </form>
+      )}
+      {!formOpen && error && <div className="form-error" role="alert">{error}</div>}
+      <Panel title="Entries" action={<div className="segmented-control bookkeeping-filter" role="radiogroup" aria-label="Filter bookkeeping entries">{["All", "Income", "Expense"].map((item) => <button key={item} type="button" role="radio" aria-checked={filter === item} className={`segmented-btn ${filter === item ? "active" : ""}`} onClick={() => setFilter(item)}>{item}</button>)}</div>}>
+        <div className="bookkeeping-list">
+          {visibleEntries.length ? visibleEntries.map((entry) => (
+            <article className={`bookkeeping-entry ${entry.entryType.toLowerCase()}`} key={entry.id}>
+              <div className="bookkeeping-entry-main"><div><strong>{entry.description}</strong><span>{entry.category} · {new Date(entry.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span><small>{entry.paymentMethod}</small></div><strong className="bookkeeping-amount">{entry.entryType === "Income" ? "+" : "-"}{money(entry.amount)}</strong></div>
+              <div className="bookkeeping-entry-footer"><span>{entry.entryType}</span><div><button type="button" className="link-btn-subtle" onClick={() => openEdit(entry)}>Edit</button><button type="button" className="link-btn-subtle danger" onClick={() => remove(entry)}>Delete</button></div></div>
+            </article>
+          )) : <div className="empty-state"><b>No bookkeeping entries yet</b><span>Add your first income or expense entry to get started.</span></div>}
+        </div>
+      </Panel>
+    </>
+  );
+}
+
 function ProfilePage({ onNavigate }) {
   const { user, profile, setProfile } = useData();
   const [fullName, setFullName] = useState(profile?.full_name || "");

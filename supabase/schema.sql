@@ -107,6 +107,21 @@ CREATE TABLE IF NOT EXISTS public.payments (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- 5. Create user-owned bookkeeping entries
+CREATE TABLE IF NOT EXISTS public.bookkeeping_entries (
+    id TEXT PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    entry_type TEXT NOT NULL CHECK (entry_type IN ('Income', 'Expense')),
+    date DATE NOT NULL DEFAULT CURRENT_DATE,
+    category TEXT NOT NULL,
+    description TEXT NOT NULL,
+    amount NUMERIC(14, 2) NOT NULL CHECK (amount >= 0),
+    payment_method TEXT NOT NULL DEFAULT 'Cash',
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
 -- ==============================================================================
 -- INDEXES FOR OPTIMAL QUERY & ANALYTICS PERFORMANCE
 -- ==============================================================================
@@ -129,6 +144,7 @@ GRANT ALL ON TABLE public.profiles TO authenticated, service_role;
 GRANT ALL ON TABLE public.dealers TO authenticated, service_role;
 GRANT ALL ON TABLE public.transactions TO authenticated, service_role;
 GRANT ALL ON TABLE public.payments TO authenticated, service_role;
+GRANT ALL ON TABLE public.bookkeeping_entries TO authenticated, service_role;
 
 GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated, service_role;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated, service_role;
@@ -144,6 +160,7 @@ REVOKE ALL ON TABLE public.dealers FROM anon;
 REVOKE ALL ON TABLE public.transactions FROM anon;
 REVOKE ALL ON TABLE public.payments FROM anon;
 REVOKE ALL ON TABLE public.profiles FROM anon;
+REVOKE ALL ON TABLE public.bookkeeping_entries FROM anon;
 
 -- ==============================================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
@@ -154,6 +171,7 @@ ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.dealers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.bookkeeping_entries ENABLE ROW LEVEL SECURITY;
 
 -- Drop prior policies to avoid conflicts upon re-execution
 DROP POLICY IF EXISTS "profiles_select_policy" ON public.profiles;
@@ -191,6 +209,10 @@ DROP POLICY IF EXISTS "Allow authenticated read payments" ON public.payments;
 DROP POLICY IF EXISTS "Allow authenticated insert payments" ON public.payments;
 DROP POLICY IF EXISTS "Allow authenticated update payments" ON public.payments;
 DROP POLICY IF EXISTS "Allow authenticated delete payments" ON public.payments;
+DROP POLICY IF EXISTS "bookkeeping_select_policy" ON public.bookkeeping_entries;
+DROP POLICY IF EXISTS "bookkeeping_insert_policy" ON public.bookkeeping_entries;
+DROP POLICY IF EXISTS "bookkeeping_update_policy" ON public.bookkeeping_entries;
+DROP POLICY IF EXISTS "bookkeeping_delete_policy" ON public.bookkeeping_entries;
 
 -- PROFILES Policies
 CREATE POLICY "profiles_select_policy" ON public.profiles
@@ -263,6 +285,24 @@ CREATE POLICY "payments_update_policy" ON public.payments
 CREATE POLICY "payments_delete_policy" ON public.payments
     FOR DELETE TO authenticated
     USING (true);
+
+-- BOOKKEEPING Policies: each authenticated user can access only their own entries
+CREATE POLICY "bookkeeping_select_policy" ON public.bookkeeping_entries
+    FOR SELECT TO authenticated
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "bookkeeping_insert_policy" ON public.bookkeeping_entries
+    FOR INSERT TO authenticated
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "bookkeeping_update_policy" ON public.bookkeeping_entries
+    FOR UPDATE TO authenticated
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "bookkeeping_delete_policy" ON public.bookkeeping_entries
+    FOR DELETE TO authenticated
+    USING (auth.uid() = user_id);
 
 -- ==============================================================================
 -- DESIGNATE EXISTING AUTH USERS AS ACTIVE SUPER ADMIN IN PROFILES

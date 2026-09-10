@@ -139,10 +139,11 @@ export function supabaseRepository() {
         throw new Error('Supabase database is not configured.');
       }
 
-      const [dealersRes, transactionsRes, paymentsRes] = await Promise.all([
+      const [dealersRes, transactionsRes, paymentsRes, bookkeepingRes] = await Promise.all([
         supabase.from('dealers').select('*'),
         supabase.from('transactions').select('*').order('date', { ascending: false }),
         supabase.from('payments').select('*').order('date', { ascending: false }),
+        supabase.from('bookkeeping_entries').select('*').order('date', { ascending: false }),
       ]);
 
       if (dealersRes.error) {
@@ -156,6 +157,10 @@ export function supabaseRepository() {
       if (paymentsRes.error) {
         console.error('Supabase fetch payments error:', paymentsRes.error);
         throw new Error('Unable to load finance data. Please check your connection or database permissions.');
+      }
+      if (bookkeepingRes.error) {
+        console.error('Supabase fetch bookkeeping entries error:', bookkeepingRes.error);
+        throw new Error('Unable to load bookkeeping data. Please try again.');
       }
 
       const mapDealerFromDb = (d) => ({
@@ -220,6 +225,19 @@ export function supabaseRepository() {
         dealers: (dealersRes.data || []).map(mapDealerFromDb),
         transactions: (transactionsRes.data || []).map(mapTrxFromDb),
         payments: (paymentsRes.data || []).map(mapPayFromDb),
+        bookkeeping: (bookkeepingRes.data || []).map((entry) => ({
+          id: entry.id,
+          userId: entry.user_id,
+          entryType: entry.entry_type,
+          date: entry.date,
+          category: entry.category || '',
+          description: entry.description || '',
+          amount: Number(entry.amount) || 0,
+          paymentMethod: entry.payment_method || 'Cash',
+          notes: entry.notes || '',
+          createdAt: entry.created_at,
+          updatedAt: entry.updated_at,
+        })),
       };
     },
 
@@ -360,6 +378,52 @@ export function supabaseRepository() {
         throw new Error('Unable to record payment. Please try again.');
       }
     },
+
+    async insertBookkeepingEntry(entry) {
+      if (!isSupabaseConfigured || !supabase) return;
+      const { error } = await supabase.from('bookkeeping_entries').insert({
+        id: entry.id,
+        user_id: entry.userId,
+        entry_type: entry.entryType,
+        date: entry.date,
+        category: entry.category,
+        description: entry.description,
+        amount: entry.amount,
+        payment_method: entry.paymentMethod,
+        notes: entry.notes,
+      });
+      if (error) {
+        console.error('Supabase insert bookkeeping entry error:', error);
+        throw new Error('Unable to save bookkeeping entry. Please try again.');
+      }
+    },
+
+    async updateBookkeepingEntry(id, entry) {
+      if (!isSupabaseConfigured || !supabase) return;
+      const { error } = await supabase.from('bookkeeping_entries').update({
+        entry_type: entry.entryType,
+        date: entry.date,
+        category: entry.category,
+        description: entry.description,
+        amount: entry.amount,
+        payment_method: entry.paymentMethod,
+        notes: entry.notes,
+        updated_at: new Date().toISOString(),
+      }).eq('id', id);
+      if (error) {
+        console.error('Supabase update bookkeeping entry error:', error);
+        throw new Error('Unable to update bookkeeping entry. Please try again.');
+      }
+    },
+
+    async deleteBookkeepingEntry(id) {
+      if (!isSupabaseConfigured || !supabase) return;
+      const { error } = await supabase.from('bookkeeping_entries').delete().eq('id', id);
+      if (error) {
+        console.error('Supabase delete bookkeeping entry error:', error);
+        throw new Error('Unable to delete bookkeeping entry. Please try again.');
+      }
+    },
   };
 }
 
@@ -433,7 +497,7 @@ export function nextId(prefix, items = []) {
 }
 
 // Comprehensive Analytics Calculation Engine
-export function calculateAnalytics(transactions = [], payments = [], period = 'Monthly') {
+export function calculateAnalytics(transactions = [], payments = [], period = 'Monthly', monthCount = 6) {
   const parseDate = (d) => {
     if (!d) return null;
     const parsed = new Date(d);
@@ -599,8 +663,10 @@ export function calculateAnalytics(transactions = [], payments = [], period = 'M
       }
     });
 
-    // Display standard 7-month window (Apr - Oct) or months containing activity
-    buckets = months.filter((m, idx) => idx >= 3 && idx <= 9).map(m => ({
+    const count = Math.max(3, Math.min(12, Number(monthCount) || 6));
+    const latestMonth = maxDate.getMonth();
+    const monthIndexes = Array.from({ length: count }, (_, offset) => (latestMonth - count + 1 + offset + 12) % 12);
+    buckets = monthIndexes.map((index) => months[index]).map(m => ({
       label: m.label,
       value: m.revenue,
       transactions: m.transactions,
