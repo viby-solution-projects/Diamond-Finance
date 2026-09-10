@@ -737,5 +737,44 @@ body,.app-shell,.main-area,.content{overflow-x:hidden}.table-scroll{overflow-x:v
   font-size: 10px;
   color: var(--muted);
 }
+.profile-identity {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 4px;
+}
+.profile-identity > div:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.profile-identity strong {
+  font-size: 15px;
+}
+.profile-identity small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.profile-form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+.profile-page .settings-field > strong {
+  display: block;
+  padding-top: 8px;
+  font-size: 13px;
+}
+@media (max-width: 767px) {
+  .profile-form-actions {
+    justify-content: stretch;
+  }
+  .profile-form-actions .button {
+    width: 100%;
+    justify-content: center;
+  }
+}
 
 

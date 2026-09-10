@@ -530,7 +530,7 @@ function App() {
                       <span>Super Admin</span>
                     </button>
                   )}
-                  <button onClick={() => go("/settings")}>
+                  <button onClick={() => go("/profile")}>
                     Account / Profile
                   </button>
                   <button onClick={() => go("/settings")}>Settings</button>
@@ -670,6 +670,7 @@ function Page({ current, onNavigate }) {
   if (current === "Reports" || current === "Analytics")
     return <Analytics onNavigate={onNavigate} />;
   if (current === "Settings") return <SettingsPage onNavigate={onNavigate} />;
+  if (current === "Profile") return <ProfilePage onNavigate={onNavigate} />;
   return <Transactions onNavigate={onNavigate} />;
 }
 
@@ -3637,57 +3638,39 @@ function MobileEarnings({ onNavigate }) {
     </>
   );
 }
-function SettingsPage({ onNavigate }) {
+function ProfilePage({ onNavigate }) {
   const { user, profile, setProfile } = useData();
-  const [settings, setSettings] = useState(loadSettings);
-  const [savedNotice, setSavedNotice] = useState(false);
+  const [fullName, setFullName] = useState(profile?.full_name || "");
   const [saving, setSaving] = useState(false);
+  const [savedNotice, setSavedNotice] = useState(false);
   const [error, setError] = useState("");
+  const displayName = profile?.full_name || user?.email || "Not available";
+  const initials = (profile?.full_name || user?.email || "?")
+    .split(/\s+|@/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
   useEffect(() => {
-    const nextSettings = loadSettings();
-    const activeFullName = profile?.full_name || user?.user_metadata?.full_name || "Your name";
-    setSettings({
-      ...nextSettings,
-      fullName: activeFullName,
-      email: profile?.email || user?.email || nextSettings.email || "",
-      businessName: nextSettings.businessName || "Diamond Broker",
-      businessAddress: nextSettings.address || "",
-      address: nextSettings.address || "",
-    });
-  }, [profile, user]);
+    setFullName(profile?.full_name || "");
+  }, [profile?.full_name]);
 
-  const setField = (event) => {
-    const { name, value, checked, type } = event.target;
-    setSettings((previous) => ({
-      ...previous,
-      [name]: type === "checkbox" ? checked : value,
-    }));
-  };
-
-  const handleSave = async () => {
+  const handleSave = async (event) => {
+    event.preventDefault();
     setError("");
     setSaving(true);
     try {
-      const trimmedName = (settings.fullName || "").trim();
-      if (user?.id && trimmedName) {
-        await updateProfile(user.id, { full_name: trimmedName });
-      }
-      const nextSettings = {
-        ...settings,
-        fullName: trimmedName || "Your name",
-        email: profile?.email || user?.email || settings.email || "",
-        address: settings.address || settings.businessAddress || "",
-      };
-      saveSettings(nextSettings);
-      if (profile && user?.id) {
-        setProfile({ ...profile, full_name: trimmedName || "Your name", email: profile.email || user.email || "" });
-      }
+      const trimmedName = fullName.trim();
+      if (!user?.id) throw new Error("Unable to identify the current account.");
+      await updateProfile(user.id, { full_name: trimmedName });
+      setProfile({ ...profile, full_name: trimmedName });
       setSavedNotice(true);
       setTimeout(() => setSavedNotice(false), 3500);
     } catch (err) {
-      console.error("Settings save failed:", err);
-      setError(err?.message || "Unable to save your account details. Please try again.");
+      console.error("Profile save failed:", err);
+      setError(err?.message || "Unable to save profile changes. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -3700,9 +3683,106 @@ function SettingsPage({ onNavigate }) {
         backLabel="Back to Dashboard"
         onNavigate={onNavigate}
         eyebrow="Workspace"
+        title="Profile"
+        description="Manage your personal account information."
+      />
+      {savedNotice && (
+        <div className="notice" role="status">
+          <CheckCircle2 size={16} color="var(--green)" />
+          <span>Profile saved successfully.</span>
+        </div>
+      )}
+      {error && (
+        <div className="login-error-banner" role="alert">
+          <AlertCircle size={16} />
+          <span>{error}</span>
+        </div>
+      )}
+      <div className="settings-page profile-page">
+        <section className="settings-section">
+          <div className="settings-section-head"><h2>Personal information</h2></div>
+          <form className="settings-field-grid" onSubmit={handleSave}>
+            <div className="profile-identity">
+              <div className="avatar">{initials}</div>
+              <div>
+                <strong>{displayName}</strong>
+                <small>{user?.email || "Not available"}</small>
+              </div>
+            </div>
+            <label className="settings-field">
+              <span>Full name</span>
+              <input value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Your name" />
+            </label>
+            <label className="settings-field">
+              <span>Business email</span>
+              <input value={user?.email || "Not available"} readOnly />
+            </label>
+            <label className="settings-field">
+              <span>Role</span>
+              <input value={profile?.role === "super_admin" ? "Super Admin" : profile?.role === "staff" ? "Staff" : "Not available"} readOnly />
+            </label>
+            <div className="profile-form-actions">
+              <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Save changes"}</Button>
+            </div>
+          </form>
+        </section>
+        <section className="settings-section">
+          <div className="settings-section-head"><h2>Account</h2></div>
+          <div className="settings-field-grid">
+            <div className="settings-field"><span>Account email</span><strong>{user?.email || "Not available"}</strong></div>
+            <div className="settings-field"><span>Account status</span><strong>{profile?.status || "Not available"}</strong></div>
+          </div>
+        </section>
+      </div>
+    </>
+  );
+}
+
+function SettingsPage({ onNavigate }) {
+  const [settings, setSettings] = useState(loadSettings);
+  const [savedNotice, setSavedNotice] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const nextSettings = loadSettings();
+    setSettings({
+      ...nextSettings,
+      businessName: nextSettings.businessName || "Diamond Broker",
+      businessAddress: nextSettings.address || "",
+      address: nextSettings.address || "",
+    });
+  }, []);
+
+  const setField = (event) => {
+    const { name, value, checked, type } = event.target;
+    setSettings((previous) => ({
+      ...previous,
+      [name]: type === "checkbox" ? checked : value,
+    }));
+  };
+
+  const handleSave = () => {
+    setError("");
+    try {
+      saveSettings({ ...settings, address: settings.address || settings.businessAddress || "" });
+      setSavedNotice(true);
+      setTimeout(() => setSavedNotice(false), 3500);
+    } catch (err) {
+      console.error("Settings save failed:", err);
+      setError(err?.message || "Unable to save workspace settings. Please try again.");
+    }
+  };
+
+  return (
+    <>
+      <PageHeader
+        backTo="/"
+        backLabel="Back to Dashboard"
+        onNavigate={onNavigate}
+        eyebrow="Workspace"
         title="Settings"
         description="Manage your account, business details and operating preferences."
-        action={<Button onClick={handleSave} disabled={saving}>{saving ? "Saving..." : "Save changes"}</Button>}
+        action={<Button onClick={handleSave}>Save changes</Button>}
       />
 
       {savedNotice && (
@@ -3720,29 +3800,6 @@ function SettingsPage({ onNavigate }) {
       )}
 
       <div className="settings-page">
-        <section className="settings-section">
-          <div className="settings-section-head">
-            <h2>Account</h2>
-          </div>
-          <div className="settings-field-grid">
-            <label className="settings-field">
-              <span>Full name</span>
-              <input name="fullName" value={settings.fullName || "Your name"} onChange={setField} />
-              <small>Used across your finance workspace.</small>
-            </label>
-            <label className="settings-field">
-              <span>Business email</span>
-              <input name="email" type="email" value={settings.email || user?.email || ""} readOnly />
-              <small>Managed by your authenticated Supabase account.</small>
-            </label>
-            <label className="settings-field">
-              <span>Role</span>
-              <input value={profile?.role === "super_admin" ? "Super Admin" : profile?.role === "staff" ? "Staff" : "Not available"} readOnly />
-              <small>Current workspace access level.</small>
-            </label>
-          </div>
-        </section>
-
         <section className="settings-section">
           <div className="settings-section-head">
             <h2>Business</h2>
