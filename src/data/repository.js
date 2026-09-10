@@ -17,6 +17,10 @@ export const seedData = {
       totalRate: 500000,
       amount: 500000,
       terms: 2,
+      termsAmount: 10000,
+      amountAfterTerms: 490000,
+      cvd: 0,
+      finalNet: 490000,
       dueDays: 30,
       sellType: 'Self',
       otherSellType: '',
@@ -38,6 +42,10 @@ export const seedData = {
       totalRate: 1000000,
       amount: 1000000,
       terms: 2.5,
+      termsAmount: 25000,
+      amountAfterTerms: 975000,
+      cvd: 0,
+      finalNet: 975000,
       dueDays: 45,
       sellType: 'Other',
       otherSellType: 'Wholesale',
@@ -86,16 +94,31 @@ export function localRepository() {
           ...d,
           type: (d.type || 'both').toLowerCase(),
         }));
-        data.transactions = data.transactions.map(t => ({
-          diamondCarat: t.diamondCarat ?? 0,
-          perCaratRate: t.perCaratRate ?? 0,
-          totalRate: t.totalRate ?? (t.amount || 0),
-          terms: t.terms ?? 0,
-          dueDays: t.dueDays ?? 0,
-          sellType: t.sellType || 'Self',
-          otherSellType: t.otherSellType || '',
-          ...t,
-        }));
+        data.transactions = data.transactions.map(t => {
+          const diamondCarat = t.diamondCarat ?? 0;
+          const perCaratRate = t.perCaratRate ?? 0;
+          const totalRate = t.totalRate ?? (diamondCarat * perCaratRate) ?? (t.amount || 0);
+          const terms = t.terms ?? 0;
+          const termsAmount = t.termsAmount ?? ((totalRate * terms) / 100);
+          const amountAfterTerms = t.amountAfterTerms ?? (totalRate - termsAmount);
+          const cvd = t.cvd ?? 0;
+          const finalNet = t.finalNet ?? (amountAfterTerms + cvd);
+          return {
+            ...t,
+            diamondCarat,
+            perCaratRate,
+            totalRate,
+            amount: totalRate,
+            terms,
+            termsAmount,
+            amountAfterTerms,
+            cvd,
+            finalNet,
+            dueDays: t.dueDays ?? 0,
+            sellType: t.sellType || 'Self',
+            otherSellType: t.otherSellType || '',
+          };
+        });
         return data;
       } catch {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(seedData));
@@ -146,27 +169,42 @@ export function supabaseRepository() {
         type: (d.type || 'both').toLowerCase(),
       });
 
-      const mapTrxFromDb = (t) => ({
-        id: t.id,
-        name: t.name,
-        dealerId: t.dealer_id || t.seller_id,
-        sellerId: t.seller_id || t.dealer_id,
-        buyerId: t.buyer_id,
-        date: t.date,
-        diamondCarat: Number(t.diamond_carat) || 0,
-        perCaratRate: Number(t.per_carat_rate) || 0,
-        totalRate: Number(t.total_rate) || Number(t.amount) || 0,
-        amount: Number(t.amount) || Number(t.total_rate) || 0,
-        terms: Number(t.terms) || 0,
-        dueDays: Number(t.due_days) || 0,
-        sellType: t.sell_type || 'Self',
-        otherSellType: t.other_sell_type || '',
-        brokerageRate: Number(t.brokerage_rate) || 5,
-        brokerageEarned: Number(t.brokerage_earned) || 0,
-        status: t.status || 'Pending',
-        paymentMethod: t.payment_method || 'Bank transfer',
-        notes: t.notes || '',
-      });
+      const mapTrxFromDb = (t) => {
+        const diamondCarat = Number(t.diamond_carat) || 0;
+        const perCaratRate = Number(t.per_carat_rate) || 0;
+        const totalRate = Number(t.total_rate) || (diamondCarat * perCaratRate) || Number(t.amount) || 0;
+        const terms = Number(t.terms) || 0;
+        const termsAmount = t.terms_amount != null ? Number(t.terms_amount) : ((totalRate * terms) / 100);
+        const amountAfterTerms = t.amount_after_terms != null ? Number(t.amount_after_terms) : (totalRate - termsAmount);
+        const cvd = Number(t.cvd) || 0;
+        const finalNet = t.final_net != null ? Number(t.final_net) : (amountAfterTerms + cvd);
+
+        return {
+          id: t.id,
+          name: t.name,
+          dealerId: t.dealer_id || t.seller_id,
+          sellerId: t.seller_id || t.dealer_id,
+          buyerId: t.buyer_id,
+          date: t.date,
+          diamondCarat,
+          perCaratRate,
+          totalRate,
+          amount: totalRate,
+          terms,
+          termsAmount,
+          amountAfterTerms,
+          cvd,
+          finalNet,
+          dueDays: Number(t.due_days) || 0,
+          sellType: t.sell_type || 'Self',
+          otherSellType: t.other_sell_type || '',
+          brokerageRate: Number(t.brokerage_rate) || 5,
+          brokerageEarned: Number(t.brokerage_earned) || 0,
+          status: t.status || 'Pending',
+          paymentMethod: t.payment_method || 'Bank transfer',
+          notes: t.notes || '',
+        };
+      };
 
       const mapPayFromDb = (p) => ({
         id: p.id,
@@ -241,8 +279,12 @@ export function supabaseRepository() {
         diamond_carat: trx.diamondCarat,
         per_carat_rate: trx.perCaratRate,
         total_rate: trx.totalRate,
-        amount: trx.amount || trx.totalRate,
+        amount: trx.totalRate,
         terms: trx.terms,
+        terms_amount: trx.termsAmount,
+        amount_after_terms: trx.amountAfterTerms,
+        cvd: trx.cvd,
+        final_net: trx.finalNet,
         due_days: trx.dueDays,
         sell_type: trx.sellType,
         other_sell_type: trx.otherSellType,
@@ -273,6 +315,10 @@ export function supabaseRepository() {
       if (trx.totalRate !== undefined) updates.total_rate = trx.totalRate;
       if (trx.amount !== undefined) updates.amount = trx.amount;
       if (trx.terms !== undefined) updates.terms = trx.terms;
+      if (trx.termsAmount !== undefined) updates.terms_amount = trx.termsAmount;
+      if (trx.amountAfterTerms !== undefined) updates.amount_after_terms = trx.amountAfterTerms;
+      if (trx.cvd !== undefined) updates.cvd = trx.cvd;
+      if (trx.finalNet !== undefined) updates.final_net = trx.finalNet;
       if (trx.dueDays !== undefined) updates.due_days = trx.dueDays;
       if (trx.sellType !== undefined) updates.sell_type = trx.sellType;
       if (trx.otherSellType !== undefined) updates.other_sell_type = trx.otherSellType;

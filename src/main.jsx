@@ -1206,7 +1206,19 @@ function TransactionDetails({ onNavigate }) {
               <Detail label="Total Rate" value={money(transaction.totalRate)} />
             ) : null}
             {transaction.terms != null && transaction.terms !== "" ? (
-              <Detail label="Terms" value={`${transaction.terms}%`} />
+              <Detail
+                label={`Terms (${transaction.terms}%)`}
+                value={transaction.termsAmount ? `-${money(transaction.termsAmount)}` : `${transaction.terms}%`}
+              />
+            ) : null}
+            {transaction.amountAfterTerms ? (
+              <Detail label="Amount After Terms" value={money(transaction.amountAfterTerms)} />
+            ) : null}
+            {transaction.cvd ? (
+              <Detail label="CVD" value={`+${money(transaction.cvd)}`} />
+            ) : null}
+            {transaction.finalNet ? (
+              <Detail label="Final Net" value={money(transaction.finalNet)} />
             ) : null}
             {transaction.dueDays != null && transaction.dueDays !== "" ? (
               <Detail label="Due Days" value={`${transaction.dueDays} days`} />
@@ -1300,6 +1312,7 @@ function EditTransactionModal({ open, onClose, transaction, onSave }) {
     diamondCarat: "",
     perCaratRate: "",
     terms: "2",
+    cvd: "0",
     dueDays: "30",
     sellType: "Self",
     otherSellType: "",
@@ -1320,6 +1333,7 @@ function EditTransactionModal({ open, onClose, transaction, onSave }) {
         diamondCarat: String(transaction.diamondCarat ?? ""),
         perCaratRate: transaction.perCaratRate ? formatIndianNumber(transaction.perCaratRate) : "",
         terms: String(transaction.terms ?? 2),
+        cvd: transaction.cvd != null && transaction.cvd !== "" ? formatIndianNumber(transaction.cvd) : "0",
         dueDays: String(transaction.dueDays ?? 30),
         sellType: transaction.sellType || "Self",
         otherSellType: transaction.otherSellType || "",
@@ -1343,8 +1357,18 @@ function EditTransactionModal({ open, onClose, transaction, onSave }) {
       ? Math.round(caratValue * perCaratRateValue * 100) / 100
       : 0;
 
+  const termsPercentValue = parseFloat(form.terms) || 0;
+  const termsAmountValue =
+    totalRateValue > 0 && termsPercentValue > 0
+      ? Math.round(((totalRateValue * termsPercentValue) / 100) * 100) / 100
+      : 0;
+
+  const amountAfterTermsValue = Math.round((totalRateValue - termsAmountValue) * 100) / 100;
+  const cvdValue = parseFloat(String(form.cvd || "0").replace(/,/g, "")) || 0;
+  const finalNetValue = Math.round((amountAfterTermsValue + cvdValue) * 100) / 100;
+
   const brokerageRateValue = Number(form.brokerageRate) || 0;
-  const brokerageEarned = (totalRateValue * brokerageRateValue) / 100;
+  const brokerageEarned = (totalRateValue * (Number.isFinite(brokerageRateValue) ? brokerageRateValue : 5)) / 100;
 
   const set = (event) =>
     setForm((previous) => ({
@@ -1357,6 +1381,7 @@ function EditTransactionModal({ open, onClose, transaction, onSave }) {
     const carat = Number(form.diamondCarat);
     const rate = Number(String(form.perCaratRate).replace(/,/g, ""));
     const terms = Number(form.terms);
+    const cvd = form.cvd ? Number(String(form.cvd).replace(/,/g, "")) : 0;
     const dueDays = Number(form.dueDays);
     const brokerageRate = Number(form.brokerageRate);
 
@@ -1371,6 +1396,9 @@ function EditTransactionModal({ open, onClose, transaction, onSave }) {
     if (form.terms === "" || !Number.isFinite(terms) || terms < 0) {
       return setError("Terms (%) must be 0 or greater.");
     }
+    if (!Number.isFinite(cvd) || cvd < 0) {
+      return setError("CVD must be 0 or greater.");
+    }
     if (form.dueDays === "" || !Number.isFinite(dueDays) || dueDays < 0) {
       return setError("Due days must be 0 or greater.");
     }
@@ -1384,6 +1412,9 @@ function EditTransactionModal({ open, onClose, transaction, onSave }) {
     }
 
     const totalRate = Math.round(carat * rate * 100) / 100;
+    const termsAmount = Math.round(((totalRate * terms) / 100) * 100) / 100;
+    const amountAfterTerms = Math.round((totalRate - termsAmount) * 100) / 100;
+    const finalNet = Math.round((amountAfterTerms + cvd) * 100) / 100;
     const earned = Math.round(((totalRate * (Number.isFinite(brokerageRate) ? brokerageRate : 5)) / 100) * 100) / 100;
 
     try {
@@ -1395,6 +1426,10 @@ function EditTransactionModal({ open, onClose, transaction, onSave }) {
         totalRate,
         amount: totalRate,
         terms,
+        termsAmount,
+        amountAfterTerms,
+        cvd,
+        finalNet,
         dueDays,
         sellType: form.sellType,
         otherSellType: form.sellType === "Other" ? form.otherSellType.trim() : "",
@@ -1415,7 +1450,7 @@ function EditTransactionModal({ open, onClose, transaction, onSave }) {
 
   return (
     <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="modal-card" style={{ maxWidth: "600px" }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal-card" style={{ maxWidth: "660px" }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <h3>Edit transaction — {transaction.id}</h3>
           <button className="icon-btn" onClick={onClose} aria-label="Close modal">
@@ -1568,6 +1603,72 @@ function EditTransactionModal({ open, onClose, transaction, onSave }) {
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Dedicated Amount Summary Section in Modal */}
+            <div className="amount-summary-card" style={{ border: "1px solid var(--line)", borderRadius: "8px", marginTop: "4px" }}>
+              <div style={{ fontSize: "12px", fontWeight: "700", color: "var(--ink)", paddingBottom: "4px", borderBottom: "1px solid var(--line)" }}>
+                Amount Summary
+              </div>
+              <div className="summary-row">
+                <div className="summary-label">
+                  <span>Total Rate</span>
+                  <small className="summary-hint">Carat × Per Carat Rate</small>
+                </div>
+                <div className="summary-value">{money(totalRateValue)}</div>
+              </div>
+              <div className="summary-row">
+                <div className="summary-label">
+                  <span>Terms ({termsPercentValue}%)</span>
+                  <small className="summary-hint">Deduction</small>
+                </div>
+                <div className="summary-value deduction">
+                  {termsAmountValue > 0 ? `-${money(termsAmountValue)}` : money(0)}
+                </div>
+              </div>
+              <div className="summary-row">
+                <div className="summary-label">
+                  <span>Amount After Terms</span>
+                  <small className="summary-hint">Total Rate − Terms</small>
+                </div>
+                <div className="summary-value">{money(amountAfterTermsValue)}</div>
+              </div>
+              <div className="summary-row cvd-row">
+                <div className="summary-label">
+                  <span className="cvd-label-text">CVD</span>
+                  <small className="summary-hint">Additional value</small>
+                </div>
+                <div className="cvd-input-wrap">
+                  <div className="input-with-symbol">
+                    <span className="input-symbol">₹</span>
+                    <input
+                      name="cvd"
+                      type="text"
+                      inputMode="decimal"
+                      value={form.cvd}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+                        setForm((p) => ({
+                          ...p,
+                          cvd: raw ? formatIndianNumber(raw) : "",
+                        }));
+                      }}
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="summary-divider" />
+              <div className="summary-row final-net-row">
+                <div className="summary-label">
+                  <span className="final-net-title">Final Net</span>
+                  <small className="summary-hint">Amount After Terms + CVD</small>
+                </div>
+                <div className="final-net-value">{money(finalNetValue)}</div>
+              </div>
+            </div>
+
+            <div className="form-grid" style={{ padding: 0, marginTop: "8px" }}>
               <label className="field-group">
                 <span className="field-title">Seller</span>
                 <select name="sellerId" value={form.sellerId} onChange={set} required>
@@ -1680,6 +1781,7 @@ function NewTransaction({ onNavigate }) {
     diamondCarat: "",
     perCaratRate: "",
     terms: "2",
+    cvd: "0",
     dueDays: "30",
     sellType: "Self",
     otherSellType: "",
@@ -1700,8 +1802,18 @@ function NewTransaction({ onNavigate }) {
       ? Math.round(caratValue * perCaratRateValue * 100) / 100
       : 0;
 
+  const termsPercentValue = parseFloat(form.terms) || 0;
+  const termsAmountValue =
+    totalRateValue > 0 && termsPercentValue > 0
+      ? Math.round(((totalRateValue * termsPercentValue) / 100) * 100) / 100
+      : 0;
+
+  const amountAfterTermsValue = Math.round((totalRateValue - termsAmountValue) * 100) / 100;
+  const cvdValue = parseFloat(String(form.cvd || "0").replace(/,/g, "")) || 0;
+  const finalNetValue = Math.round((amountAfterTermsValue + cvdValue) * 100) / 100;
+
   const brokerageRateValue = Number(form.brokerageRate) || 0;
-  const brokerageEarned = (totalRateValue * brokerageRateValue) / 100;
+  const brokerageEarned = (totalRateValue * (Number.isFinite(brokerageRateValue) ? brokerageRateValue : 5)) / 100;
 
   const set = (event) =>
     setForm((previous) => ({
@@ -1717,6 +1829,7 @@ function NewTransaction({ onNavigate }) {
     const carat = Number(form.diamondCarat);
     const rate = Number(String(form.perCaratRate).replace(/,/g, ""));
     const terms = Number(form.terms);
+    const cvd = form.cvd ? Number(String(form.cvd).replace(/,/g, "")) : 0;
     const dueDays = Number(form.dueDays);
     const brokerageRate = Number(form.brokerageRate);
 
@@ -1731,6 +1844,9 @@ function NewTransaction({ onNavigate }) {
     if (form.terms === "" || !Number.isFinite(terms) || terms < 0) {
       return setError("Terms (%) must be 0 or greater.");
     }
+    if (!Number.isFinite(cvd) || cvd < 0) {
+      return setError("CVD must be 0 or greater.");
+    }
     if (form.dueDays === "" || !Number.isFinite(dueDays) || dueDays < 0) {
       return setError("Due days must be 0 or greater.");
     }
@@ -1744,6 +1860,9 @@ function NewTransaction({ onNavigate }) {
     }
 
     const totalRate = Math.round(carat * rate * 100) / 100;
+    const termsAmount = Math.round(((totalRate * terms) / 100) * 100) / 100;
+    const amountAfterTerms = Math.round((totalRate - termsAmount) * 100) / 100;
+    const finalNet = Math.round((amountAfterTerms + cvd) * 100) / 100;
     const earned = Math.round(((totalRate * (Number.isFinite(brokerageRate) ? brokerageRate : 5)) / 100) * 100) / 100;
 
     const transaction = {
@@ -1755,6 +1874,10 @@ function NewTransaction({ onNavigate }) {
       totalRate,
       amount: totalRate,
       terms,
+      termsAmount,
+      amountAfterTerms,
+      cvd,
+      finalNet,
       dueDays,
       sellType: form.sellType,
       otherSellType: form.sellType === "Other" ? form.otherSellType.trim() : "",
@@ -1820,7 +1943,6 @@ function NewTransaction({ onNavigate }) {
                 name="diamondCarat"
                 type="text"
                 inputMode="decimal"
-                pattern="[0-9.]*"
                 value={form.diamondCarat}
                 onChange={(event) => {
                   const raw = event.target.value.replace(/[^0-9.]/g, "");
@@ -1880,7 +2002,6 @@ function NewTransaction({ onNavigate }) {
                 name="terms"
                 type="text"
                 inputMode="decimal"
-                pattern="[0-9.]*"
                 value={form.terms}
                 onChange={(event) =>
                   setForm((previous) => ({
@@ -1901,7 +2022,6 @@ function NewTransaction({ onNavigate }) {
                 name="dueDays"
                 type="text"
                 inputMode="numeric"
-                pattern="[0-9]*"
                 value={form.dueDays}
                 onChange={(event) =>
                   setForm((previous) => ({
@@ -1965,6 +2085,74 @@ function NewTransaction({ onNavigate }) {
           </div>
         </Panel>
 
+        {/* Dedicated Amount Summary Section */}
+        <Panel title="Amount Summary" className="form-panel amount-summary-panel">
+          <div className="amount-summary-card">
+            <div className="summary-row">
+              <div className="summary-label">
+                <span>Total Rate</span>
+                <small className="summary-hint">Carat × Per Carat Rate</small>
+              </div>
+              <div className="summary-value">{money(totalRateValue)}</div>
+            </div>
+
+            <div className="summary-row">
+              <div className="summary-label">
+                <span>Terms ({termsPercentValue}%)</span>
+                <small className="summary-hint">Deduction</small>
+              </div>
+              <div className="summary-value deduction">
+                {termsAmountValue > 0 ? `-${money(termsAmountValue)}` : money(0)}
+              </div>
+            </div>
+
+            <div className="summary-row">
+              <div className="summary-label">
+                <span>Amount After Terms</span>
+                <small className="summary-hint">Total Rate − Terms</small>
+              </div>
+              <div className="summary-value">{money(amountAfterTermsValue)}</div>
+            </div>
+
+            <div className="summary-row cvd-row">
+              <div className="summary-label">
+                <label htmlFor="new-cvd-input" className="cvd-label-text">CVD</label>
+                <small className="summary-hint">Additional value</small>
+              </div>
+              <div className="cvd-input-wrap">
+                <div className="input-with-symbol">
+                  <span className="input-symbol">₹</span>
+                  <input
+                    id="new-cvd-input"
+                    name="cvd"
+                    type="text"
+                    inputMode="decimal"
+                    value={form.cvd}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+                      setForm((p) => ({
+                        ...p,
+                        cvd: raw ? formatIndianNumber(raw) : "",
+                      }));
+                    }}
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="summary-divider" />
+
+            <div className="summary-row final-net-row">
+              <div className="summary-label">
+                <span className="final-net-title">Final Net</span>
+                <small className="summary-hint">Amount After Terms + CVD</small>
+              </div>
+              <div className="final-net-value">{money(finalNetValue)}</div>
+            </div>
+          </div>
+        </Panel>
+
         <Panel title="Parties involved" className="form-panel">
           <div className="party-flow">
             <label className="field-group">
@@ -1997,7 +2185,6 @@ function NewTransaction({ onNavigate }) {
                 name="brokerageRate"
                 type="text"
                 inputMode="decimal"
-                pattern="[0-9.]*"
                 value={form.brokerageRate}
                 onChange={(event) =>
                   setForm((previous) => ({
@@ -2044,17 +2231,13 @@ function NewTransaction({ onNavigate }) {
             {error}
           </div>
         )}
+
         <div className="form-actions">
-          <Button
-            secondary
-            onClick={() => onNavigate("/transactions")}
-            icon={null}
-            disabled={submitting}
-          >
+          <Button secondary type="button" onClick={() => onNavigate("/transactions")}>
             Cancel
           </Button>
           <Button type="submit" disabled={submitting}>
-            {submitting ? "Saving..." : "Create transaction"}
+            {submitting ? "Creating..." : "Create transaction"}
           </Button>
         </div>
       </form>

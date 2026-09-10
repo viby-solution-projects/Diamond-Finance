@@ -214,6 +214,126 @@ body,.app-shell,.main-area,.content{overflow-x:hidden}.table-scroll{overflow-x:v
 .subfield-margin{margin-top:6px}
 .label-with-badge{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .optional-tag{font-size:9.5px;font-weight:500;color:var(--muted);background:#f0f3f7;padding:1px 6px;border-radius:4px}
+
+/* Dedicated Amount Summary Section */
+.amount-summary-panel {
+  overflow: visible;
+}
+.amount-summary-card {
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #ffffff;
+}
+.summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 32px;
+}
+.summary-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.summary-label span,
+.summary-label .cvd-label-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.summary-hint {
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 500;
+}
+.summary-value {
+  font-family: Manrope, sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  text-align: right;
+}
+.summary-value.deduction {
+  color: #c93b47;
+}
+.cvd-row {
+  align-items: center;
+}
+.cvd-input-wrap {
+  width: 170px;
+  max-width: 50%;
+}
+.cvd-input-wrap .input-with-symbol {
+  margin-top: 0;
+}
+.cvd-input-wrap input {
+  height: 36px;
+  font-family: Manrope, sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--ink);
+  text-align: right;
+  padding-right: 12px !important;
+}
+.summary-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 4px 0;
+}
+.final-net-row {
+  background: #f0f5ff;
+  border: 1px solid #cce0ff;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-top: 2px;
+}
+.final-net-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--blue);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.final-net-value {
+  font-family: Manrope, sans-serif;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--blue);
+  text-align: right;
+  line-height: 1.2;
+}
+
+@media (max-width: 767px) {
+  .amount-summary-card {
+    padding: 16px 14px;
+    gap: 10px;
+  }
+  .summary-row {
+    min-height: 28px;
+  }
+  .summary-label span,
+  .summary-label .cvd-label-text {
+    font-size: 12.5px;
+  }
+  .summary-value {
+    font-size: 14px;
+  }
+  .cvd-input-wrap {
+    width: 140px;
+  }
+  .final-net-row {
+    padding: 10px 12px;
+  }
+  .final-net-title {
+    font-size: 13px;
+  }
+  .final-net-value {
+    font-size: 19px;
+  }
+}
 @keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
 
 /* Dealer Modal & Management Styles */

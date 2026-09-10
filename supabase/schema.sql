@@ -74,6 +74,10 @@ CREATE TABLE IF NOT EXISTS public.transactions (
     total_rate NUMERIC(14, 2) NOT NULL DEFAULT 0,
     amount NUMERIC(14, 2) NOT NULL DEFAULT 0,
     terms NUMERIC(6, 2) DEFAULT 0,
+    terms_amount NUMERIC(14, 2) DEFAULT 0,
+    amount_after_terms NUMERIC(14, 2) DEFAULT 0,
+    cvd NUMERIC(14, 2) DEFAULT 0,
+    final_net NUMERIC(14, 2) DEFAULT 0,
     due_days INTEGER DEFAULT 0,
     sell_type TEXT DEFAULT 'Self',
     other_sell_type TEXT,
@@ -84,6 +88,12 @@ CREATE TABLE IF NOT EXISTS public.transactions (
     notes TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- Safely add new calculation columns if table was created in an earlier migration
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS terms_amount NUMERIC(14, 2) DEFAULT 0;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS amount_after_terms NUMERIC(14, 2) DEFAULT 0;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS cvd NUMERIC(14, 2) DEFAULT 0;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS final_net NUMERIC(14, 2) DEFAULT 0;
 
 -- 4. Create Payments Table
 CREATE TABLE IF NOT EXISTS public.payments (
