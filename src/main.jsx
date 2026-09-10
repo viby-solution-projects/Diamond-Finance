@@ -25,17 +25,11 @@ import {
   CalendarDays,
   Pencil,
   Trash2,
-  Shield,
-  ShieldCheck,
-  UserCheck,
-  UserX,
-  UserPlus,
-  Lock,
   AlertCircle,
-  KeyRound,
   CheckCircle2,
   Eye,
   EyeOff,
+  Lock,
 } from "lucide-react";
 import "./styles.css";
 import {
@@ -45,14 +39,10 @@ import {
   authGetSession,
   authResetPasswordForEmail,
   authUpdatePassword,
-  fetchProfiles,
   updateProfile,
-  toggleUserStatus,
-  createAuthorizedUser,
 } from "./data/supabaseClient";
 import {
   dealerTypeLabel,
-  localRepository,
   supabaseRepository,
   loadSettings,
   money,
@@ -65,10 +55,9 @@ import {
 
 const navItems = [
   { label: "Dashboard", icon: Grid2X2, path: "/" },
-  { label: "Transactions", icon: CircleDollarSign, path: "/transactions" },
+  { label: "Deals", icon: CircleDollarSign, path: "/transactions" },
   { label: "Dealers", icon: Users, path: "/dealers" },
   { label: "Payments", icon: CreditCard, path: "/payments" },
-  { label: "Earnings", icon: BarChart3, path: "/earnings" },
   { label: "Analytics", icon: FileBarChart, path: "/analytics" },
   { label: "Bookkeeping", icon: Wallet, path: "/bookkeeping" },
   { label: "Settings", icon: Settings, path: "/settings" },
@@ -81,20 +70,31 @@ function useData() {
 
 function routeName() {
   const path = window.location.pathname;
-  if (path === "/admin") return "Super Admin";
   if (path === "/login") return "Login";
-  return path === "/"
-    ? "Dashboard"
-    : path
-        .slice(1)
-        .split("-")
-        .map((x) => x[0].toUpperCase() + x.slice(1))
-        .join(" ");
+  if (path === "/" || path === "") return "Dashboard";
+  if (path === "/transactions" || path === "/deals") return "Deals";
+  if (path === "/transaction-details" || path === "/deal-details") return "Deal Details";
+  if (path === "/new-transaction" || path === "/new-deal") return "New Deal";
+  if (path === "/dealers") return "Dealers";
+  if (path === "/dealer-profile") return "Dealer Profile";
+  if (path === "/payments") return "Payments";
+  if (path === "/analytics" || path === "/reports" || path === "/earnings") return "Analytics";
+  if (path === "/bookkeeping") return "Bookkeeping";
+  if (path === "/settings") return "Settings";
+  if (path === "/profile") return "Profile";
+
+  return path
+    .slice(1)
+    .split("-")
+    .map((x) => x[0].toUpperCase() + x.slice(1))
+    .join(" ");
 }
+
 function navigate(path) {
   window.history.pushState({}, "", path);
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
+
 function downloadCsv(filename, headers, rows) {
   const csv = [headers, ...rows]
     .map((row) =>
@@ -108,6 +108,17 @@ function downloadCsv(filename, headers, rows) {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(link.href);
+}
+
+function formatIndianNumber(value) {
+  if (value === "" || value == null) return "";
+  const clean = String(value).replace(/[^0-9.]/g, "");
+  const parts = clean.split(".");
+  const intPart = parts[0];
+  const decPart = parts.length > 1 ? "." + parts.slice(1).join("") : "";
+  if (!intPart) return decPart ? "0" + decPart : "";
+  const formattedInt = Number(intPart).toLocaleString("en-IN");
+  return formattedInt + decPart;
 }
 
 function App() {
@@ -188,7 +199,6 @@ function App() {
     }
   };
 
-  // Only load finance data when an authenticated user session is active
   useEffect(() => {
     if (user?.id) {
       loadData();
@@ -221,7 +231,7 @@ function App() {
       }));
     } catch (err) {
       console.error("addTransaction error:", err);
-      alert(err.message || "Failed to create transaction.");
+      alert(err.message || "Failed to create deal.");
       throw err;
     }
   };
@@ -237,7 +247,7 @@ function App() {
       }));
     } catch (err) {
       console.error("updateTransaction error:", err);
-      alert(err.message || "Failed to update transaction.");
+      alert(err.message || "Failed to update deal.");
       throw err;
     }
   };
@@ -248,11 +258,12 @@ function App() {
       setData((prev) => ({
         ...prev,
         transactions: prev.transactions.filter((t) => t.id !== id),
+        payments: prev.payments.filter((p) => p.transactionId !== id),
       }));
       return { success: true };
     } catch (err) {
       console.error("deleteTransaction error:", err);
-      return { success: false, reason: err.message || "Failed to delete transaction." };
+      return { success: false, reason: err.message || "Failed to delete deal." };
     }
   };
 
@@ -265,7 +276,6 @@ function App() {
       }));
     } catch (err) {
       console.error("addPayment error:", err);
-      alert(err.message || "Failed to record payment.");
       throw err;
     }
   };
@@ -349,7 +359,7 @@ function App() {
     if (isUsed) {
       return {
         success: false,
-        reason: "This dealer is used in an existing transaction.",
+        reason: "This dealer is linked to an existing deal or payment record.",
       };
     }
     try {
@@ -364,7 +374,8 @@ function App() {
       return { success: false, reason: err.message || "Failed to delete dealer." };
     }
   };
-  React.useEffect(() => {
+
+  useEffect(() => {
     const escape = (event) => {
       if (event.key === "Escape") {
         setDrawer(false);
@@ -376,13 +387,15 @@ function App() {
       window.removeEventListener("keydown", escape);
     };
   }, []);
-  React.useEffect(() => {
+
+  useEffect(() => {
     document.body.style.overflow = drawer ? "hidden" : "";
     return () => {
       document.body.style.overflow = "";
     };
   }, [drawer]);
-  React.useEffect(() => {
+
+  useEffect(() => {
     if (menu !== "profile") return undefined;
     const handleOutsideClick = (event) => {
       if (!profileMenuRef.current?.contains(event.target)) setMenu(null);
@@ -390,6 +403,7 @@ function App() {
     document.addEventListener("mousedown", handleOutsideClick);
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, [menu]);
+
   const go = (path) => {
     navigate(path);
     setDrawer(false);
@@ -420,23 +434,14 @@ function App() {
     window.history.replaceState({}, "", "/");
   }
 
-  // Super Admin route guard: Only super_admin role can access /admin
-  if (current === "Super Admin" && profile?.role !== "super_admin") {
-    navigate("/");
-    return null;
-  }
-
-  const isSuperAdmin = profile?.role === "super_admin";
-  const userName = profile?.full_name || user?.user_metadata?.full_name || (isSuperAdmin ? "Super Admin" : (user?.email ? user.email.split("@")[0] : "Your name"));
-  const userEmail = profile?.email || user?.email || "";
-  const userInitials = isSuperAdmin
-    ? "SA"
-    : (userName || "Your name")
-        .split(" ")
-        .map((w) => w[0])
-        .join("")
-        .slice(0, 2)
-        .toUpperCase() || "YN";
+  const userName = profile?.full_name || user?.user_metadata?.full_name || (user?.email ? user.email.split("@")[0] : "User");
+  const userInitials = (userName || "U")
+    .split(/\s+|@/)
+    .filter(Boolean)
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase() || "U";
 
   return (
     <DataContext.Provider
@@ -466,7 +471,6 @@ function App() {
           onNavigate={go}
           open={drawer}
           onClose={() => setDrawer(false)}
-          role={profile?.role || "staff"}
         />
         <main className="main-area">
           <header className="topbar">
@@ -499,14 +503,14 @@ function App() {
                 Workspace
               </button>
               <ChevronRight size={14} />
-              {current === "Transaction Details" || current === "New Transaction" ? (
+              {current === "Deal Details" || current === "New Deal" ? (
                 <>
                   <button
                     type="button"
                     className="crumb-btn"
                     onClick={() => go("/transactions")}
                   >
-                    Transactions
+                    Deals
                   </button>
                   <ChevronRight size={14} />
                 </>
@@ -529,7 +533,6 @@ function App() {
                 className="avatar"
                 aria-label="Open profile"
                 onClick={() => setMenu(menu === "profile" ? null : "profile")}
-                style={profile?.role === "super_admin" ? { background: "#6d28d9" } : {}}
               >
                 {userInitials}
               </button>
@@ -543,15 +546,6 @@ function App() {
                 <div className="top-menu">
                   <b>{userName}</b>
                   <span style={{ fontSize: "11px", color: "var(--muted)" }}>{user?.email}</span>
-                  {profile?.role === "super_admin" && (
-                    <button
-                      className="super-admin-link"
-                      onClick={() => go("/admin")}
-                    >
-                      <Shield size={13} />
-                      <span>Super Admin</span>
-                    </button>
-                  )}
                   <button onClick={() => go("/profile")}>
                     Account / Profile
                   </button>
@@ -590,7 +584,7 @@ function App() {
   );
 }
 
-function Sidebar({ current, onNavigate, open, onClose, role = "staff" }) {
+function Sidebar({ current, onNavigate, open, onClose }) {
   return (
     <>
       {open && <div className="scrim" onClick={onClose} />}
@@ -624,7 +618,7 @@ function Sidebar({ current, onNavigate, open, onClose, role = "staff" }) {
           <div className="workspace-icon">DB</div>
           <div>
             <b>Diamond Broker</b>
-            <small>Business account</small>
+            <small>Finance workspace</small>
           </div>
         </div>
         <nav>
@@ -632,10 +626,10 @@ function Sidebar({ current, onNavigate, open, onClose, role = "staff" }) {
           {navItems.map((item) => {
             const Icon = item.icon;
             const related =
-              (item.label === "Transactions" &&
-                ["Transaction Details", "New Transaction"].includes(current)) ||
+              (item.label === "Deals" &&
+                ["Deals", "Deal Details", "New Deal", "Transactions", "Transaction Details", "New Transaction"].includes(current)) ||
               (item.label === "Dealers" && current === "Dealer Profile") ||
-              (item.label === "Analytics" && current === "Reports");
+              (item.label === "Analytics" && ["Reports", "Earnings"].includes(current));
             return (
               <button
                 key={item.path}
@@ -650,18 +644,6 @@ function Sidebar({ current, onNavigate, open, onClose, role = "staff" }) {
               </button>
             );
           })}
-          {role === "super_admin" && (
-            <>
-              <small className="nav-label" style={{ marginTop: "14px" }}>ADMINISTRATION</small>
-              <button
-                className={"nav-item " + (current === "Super Admin" ? "active" : "")}
-                onClick={() => onNavigate("/admin")}
-              >
-                <ShieldCheck size={18} />
-                <span>Super Admin</span>
-              </button>
-            </>
-          )}
         </nav>
       </aside>
     </>
@@ -669,32 +651,23 @@ function Sidebar({ current, onNavigate, open, onClose, role = "staff" }) {
 }
 
 function Page({ current, onNavigate }) {
-  const { profile } = useData();
-  if (current === "Super Admin") {
-    if (profile?.role !== "super_admin") {
-      onNavigate("/");
-      return null;
-    }
-    return <SuperAdminPage onNavigate={onNavigate} />;
-  }
   if (current === "Dashboard") return <Dashboard onNavigate={onNavigate} />;
-  if (current === "Transactions")
-    return <Transactions onNavigate={onNavigate} />;
-  if (current === "Transaction Details")
-    return <TransactionDetails onNavigate={onNavigate} />;
-  if (current === "New Transaction")
-    return <NewTransaction onNavigate={onNavigate} />;
+  if (current === "Deals" || current === "Transactions")
+    return <Deals onNavigate={onNavigate} />;
+  if (current === "Deal Details" || current === "Transaction Details")
+    return <DealDetails onNavigate={onNavigate} />;
+  if (current === "New Deal" || current === "New Transaction")
+    return <NewDeal onNavigate={onNavigate} />;
   if (current === "Dealer Profile")
     return <DealerProfile onNavigate={onNavigate} />;
   if (current === "Dealers") return <Dealers onNavigate={onNavigate} />;
   if (current === "Payments") return <Payments onNavigate={onNavigate} />;
-  if (current === "Earnings") return <Earnings onNavigate={onNavigate} />;
-  if (current === "Bookkeeping") return <Bookkeeping onNavigate={onNavigate} />;
-  if (current === "Reports" || current === "Analytics")
+  if (current === "Analytics" || current === "Reports" || current === "Earnings")
     return <Analytics onNavigate={onNavigate} />;
+  if (current === "Bookkeeping") return <Bookkeeping onNavigate={onNavigate} />;
   if (current === "Settings") return <SettingsPage onNavigate={onNavigate} />;
   if (current === "Profile") return <ProfilePage onNavigate={onNavigate} />;
-  return <Transactions onNavigate={onNavigate} />;
+  return <Deals onNavigate={onNavigate} />;
 }
 
 function PageHeader({
@@ -714,7 +687,7 @@ function PageHeader({
             type="button"
             className="back-link"
             onClick={() => onNavigate(backTo)}
-            aria-label={backLabel || "Back"}
+            aria-label={backLabel || "Back to Dashboard"}
           >
             <ChevronLeft size={14} />
             <span>{backLabel || "Back to Dashboard"}</span>
@@ -728,6 +701,7 @@ function PageHeader({
     </div>
   );
 }
+
 function Button({
   children,
   secondary,
@@ -748,6 +722,7 @@ function Button({
     </button>
   );
 }
+
 function Panel({ title, action, children, className = "" }) {
   return (
     <section className={"panel " + className}>
@@ -759,14 +734,17 @@ function Panel({ title, action, children, className = "" }) {
     </section>
   );
 }
+
 function Status({ children }) {
+  const norm = String(children || "").toLowerCase().replace(/\s+/g, "-");
   return (
-    <span className={"status " + children.toLowerCase()}>
+    <span className={"status " + norm}>
       <i />
       {children}
     </span>
   );
 }
+
 function Stat({ label, value, change, positive = true, icon: Icon }) {
   return (
     <div className="stat">
@@ -777,13 +755,16 @@ function Stat({ label, value, change, positive = true, icon: Icon }) {
         </div>
       </div>
       <strong>{value}</strong>
-      <small className={positive ? "up" : "down"}>
-        {positive ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
-        {change} <em>vs last month</em>
-      </small>
+      {change ? (
+        <small className={positive ? "up" : "down"}>
+          {positive ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
+          {change} <em>vs last month</em>
+        </small>
+      ) : null}
     </div>
   );
 }
+
 function DynamicBarChart({ chartData, yTicks = [] }) {
   if (!chartData || !chartData.length) return null;
 
@@ -805,7 +786,7 @@ function DynamicBarChart({ chartData, yTicks = [] }) {
             <span
               className={index === chartData.length - 1 ? "current" : ""}
               style={{ height: `${item.heightPercent}%` }}
-              title={`${item.label}\nRevenue: ${money(item.value)}\nTransactions: ${item.transactions || 0}`}
+              title={`${item.label}\nRevenue: ${money(item.value)}\nDeals: ${item.transactions || 0}`}
               aria-label={`${item.label} Revenue ${money(item.value)}`}
               key={item.label}
             />
@@ -833,35 +814,36 @@ function MiniChart({ transactions, payments, period = "Monthly", monthCount = 6 
 function Dashboard({ onNavigate }) {
   const { data, user, profile } = useData();
   const [revenueRange, setRevenueRange] = useState("6");
-  const isSuperAdmin = profile?.role === "super_admin";
-  const userName = profile?.full_name || user?.user_metadata?.full_name || (isSuperAdmin ? "Super Admin" : (user?.email ? user.email.split("@")[0] : "Your name"));
-  const greetingName = isSuperAdmin ? "Super Admin" : (userName || "Your name").split(" ")[0] || "Your name";
+  const userName = profile?.full_name || user?.user_metadata?.full_name || (user?.email ? user.email.split("@")[0] : "User");
+  const greetingName = (userName || "User").split(" ")[0] || "User";
   const revenue = data.transactions.reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0);
-  const pending = data.transactions
-    .filter((item) => item.status === "Pending")
-    .reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0);
+  
+  // Calculate real pending amount from deals with pending payments
+  const totalPaidSum = data.payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  const totalRemainingSum = Math.max(0, revenue - totalPaidSum);
+
   const active = data.dealers.filter((item) => item.status === "Active").length;
   return (
     <>
       <PageHeader
-        eyebrow={isSuperAdmin ? "SUPER ADMIN" : "Overview"}
+        eyebrow="Overview"
         title={`Good day, ${greetingName}`}
         description="Here's what's happening with your business today."
         action={
           <Button onClick={() => onNavigate("/new-transaction")}>
-            New transaction
+            New deal
           </Button>
         }
       />
       <div className="stats-grid">
         <Stat
-          label="Total revenue"
+          label="Total volume"
           value={money(revenue)}
           change="12.5%"
           icon={CircleDollarSign}
         />
         <Stat
-          label="Total transactions"
+          label="Total deals"
           value={data.transactions.length.toLocaleString()}
           change="8.2%"
           icon={CreditCard}
@@ -874,7 +856,7 @@ function Dashboard({ onNavigate }) {
         />
         <Stat
           label="Pending payments"
-          value={money(pending)}
+          value={money(totalRemainingSum)}
           change="2.4%"
           positive={false}
           icon={Wallet}
@@ -909,7 +891,7 @@ function Dashboard({ onNavigate }) {
       </div>
       <div className="dashboard-grid bottom-grid">
         <Panel
-          title="Recent transactions"
+          title="Recent deals"
           action={
             <button
               className="link-btn"
@@ -920,7 +902,7 @@ function Dashboard({ onNavigate }) {
           }
           className="table-panel"
         >
-          <TransactionTable
+          <DealTable
             rows={transactionRows(data).slice(0, 4)}
             onRowClick={(id) => onNavigate("/transaction-details?id=" + id)}
           />
@@ -948,8 +930,8 @@ function Dashboard({ onNavigate }) {
                 <strong>
                   {money(
                     data.transactions
-                      .filter((item) => item.dealerId === dealer.id)
-                      .reduce((sum, item) => sum + item.amount, 0),
+                      .filter((item) => item.dealerId === dealer.id || item.sellerId === dealer.id)
+                      .reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0),
                   )}
                 </strong>
               </div>
@@ -961,12 +943,12 @@ function Dashboard({ onNavigate }) {
   );
 }
 
-function TransactionTable({ rows, onRowClick }) {
+function DealTable({ rows, onRowClick }) {
   if (!rows.length)
     return (
       <div className="empty-state">
         <Search size={20} />
-        <b>No transactions found</b>
+        <b>No deals found</b>
         <span>Try clearing your search or filters.</span>
       </div>
     );
@@ -976,7 +958,7 @@ function TransactionTable({ rows, onRowClick }) {
         <table>
           <thead>
             <tr>
-              <th>Transaction</th>
+              <th>Deal</th>
               <th>Dealer</th>
               <th>Date</th>
               <th>Amount</th>
@@ -1038,6 +1020,7 @@ function TransactionTable({ rows, onRowClick }) {
     </>
   );
 }
+
 function SearchInput({ value, onChange, placeholder }) {
   return (
     <div className="search">
@@ -1051,7 +1034,8 @@ function SearchInput({ value, onChange, placeholder }) {
     </div>
   );
 }
-function Transactions({ onNavigate }) {
+
+function Deals({ onNavigate }) {
   const { data } = useData();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("All");
@@ -1070,28 +1054,28 @@ function Transactions({ onNavigate }) {
         backLabel="Back to Dashboard"
         onNavigate={onNavigate}
         eyebrow="Manage"
-        title="Transactions"
-        description="Track and manage all your diamond transactions."
+        title="Deals"
+        description="Track and manage all your diamond deals."
         action={
           <Button onClick={() => onNavigate("/new-transaction")}>
-            New transaction
+            New deal
           </Button>
         }
       />
       <Panel
-        title="All transactions"
+        title="All deals"
         action={
           <div className="panel-actions">
             <SearchInput
               value={query}
               onChange={setQuery}
-              placeholder="Search transactions..."
+              placeholder="Search deals..."
             />
             <select
               className="filter"
               value={status}
               onChange={(e) => setStatus(e.target.value)}
-              aria-label="Filter transaction status"
+              aria-label="Filter deal status"
             >
               <option>All</option>
               <option>Completed</option>
@@ -1100,11 +1084,11 @@ function Transactions({ onNavigate }) {
             </select>
             <button
               className="icon-btn bordered"
-              aria-label="Export transactions"
+              aria-label="Export deals"
               onClick={() =>
                 downloadCsv(
-                  "transactions.csv",
-                  ["Transaction", "Dealer", "Date", "Amount", "Status"],
+                  "deals.csv",
+                  ["Deal ID", "Dealer", "Date", "Amount", "Status"],
                   exportRows,
                 )
               }
@@ -1114,7 +1098,7 @@ function Transactions({ onNavigate }) {
           </div>
         }
       >
-        <TransactionTable rows={filtered} onRowClick={openDetails} />
+        <DealTable rows={filtered} onRowClick={openDetails} />
         <div className="pagination">
           <span>
             Showing {filtered.length ? 1 : 0} to {filtered.length} of{" "}
@@ -1142,39 +1126,46 @@ function Transactions({ onNavigate }) {
     </>
   );
 }
-function TransactionDetails({ onNavigate }) {
+
+function DealDetails({ onNavigate }) {
   const { data, updateTransaction } = useData();
   const [editModal, setEditModal] = useState(false);
   const id =
     new URLSearchParams(window.location.search).get("id") ||
     data.transactions[0]?.id;
-  const transaction =
+  const deal =
     data.transactions.find((item) => item.id === id) || data.transactions[0];
-  const dealer = data.dealers.find((item) => item.id === (transaction?.sellerId || transaction?.dealerId));
-  const buyer = data.dealers.find((item) => item.id === transaction?.buyerId);
+  const dealer = data.dealers.find((item) => item.id === (deal?.sellerId || deal?.dealerId));
+  const buyer = data.dealers.find((item) => item.id === deal?.buyerId);
 
-  if (!transaction)
+  if (!deal)
     return (
-      <Panel title="Transaction not found">
+      <Panel title="Deal not found">
         <Button onClick={() => onNavigate("/transactions")}>
-          Back to transactions
+          Back to deals
         </Button>
       </Panel>
     );
 
-  const handleSaveTransaction = async (updatedData) => {
-    await updateTransaction(transaction.id, updatedData);
+  const dealPayments = data.payments.filter((p) => p.transactionId === deal.id);
+  const originalAmount = Number(deal.totalRate || deal.amount) || 0;
+  const totalPaid = dealPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  const remainingAmount = Math.max(0, originalAmount - totalPaid);
+  const paymentStatus = totalPaid <= 0 ? "Pending" : remainingAmount <= 0 ? "Paid" : "Partially Paid";
+
+  const handleSaveDeal = async (updatedData) => {
+    await updateTransaction(deal.id, updatedData);
   };
 
   return (
     <>
       <PageHeader
         backTo="/transactions"
-        backLabel="Back"
+        backLabel="Back to Deals"
         onNavigate={onNavigate}
-        eyebrow="Transactions"
-        title={transaction.name}
-        description="Transaction details and payment timeline."
+        eyebrow="Deals"
+        title={deal.name}
+        description="Deal details, financials, and payment history."
         action={
           <div className="header-actions">
             <Button
@@ -1182,21 +1173,23 @@ function TransactionDetails({ onNavigate }) {
               onClick={() => setEditModal(true)}
               icon={Pencil}
             >
-              Edit transaction
+              Edit deal
             </Button>
             <Button
               secondary
               onClick={() =>
                 downloadCsv(
-                  `${transaction.id}.csv`,
-                  ["ID", "Name", "Date", "Amount", "Status"],
+                  `${deal.id}.csv`,
+                  ["Deal ID", "Name", "Date", "Original Amount", "Paid", "Remaining", "Status"],
                   [
                     [
-                      transaction.id,
-                      transaction.name,
-                      transaction.date,
-                      money(transaction.amount),
-                      transaction.status,
+                      deal.id,
+                      deal.name,
+                      deal.date,
+                      money(originalAmount),
+                      money(totalPaid),
+                      money(remainingAmount),
+                      paymentStatus,
                     ],
                   ],
                 )
@@ -1211,116 +1204,148 @@ function TransactionDetails({ onNavigate }) {
       <div className="detail-layout">
         <Panel title="Financial summary" className="detail-summary">
           <div className="detail-amount">
-            <span>Total amount</span>
-            <strong>{money(transaction.totalRate || transaction.amount)}</strong>
-            <Status>{transaction.status}</Status>
+            <span>Original Deal Amount</span>
+            <strong>{money(originalAmount)}</strong>
+            <Status>{paymentStatus}</Status>
           </div>
           <div className="detail-grid">
-            <Detail label="Transaction ID" value={transaction.id} />
-            <Detail label="Transaction date" value={transaction.date} />
-            {transaction.diamondCarat ? (
-              <Detail label="Diamond Carat" value={`${transaction.diamondCarat} ct`} />
+            <Detail label="Deal ID" value={deal.id} />
+            <Detail label="Deal Date" value={deal.date} />
+            {deal.diamondCarat ? (
+              <Detail label="Diamond Carat" value={`${deal.diamondCarat} ct`} />
             ) : null}
-            {transaction.perCaratRate ? (
-              <Detail label="Per Carat Rate" value={money(transaction.perCaratRate)} />
+            {deal.perCaratRate ? (
+              <Detail label="Per Carat Rate" value={money(deal.perCaratRate)} />
             ) : null}
-            {transaction.totalRate ? (
-              <Detail label="Total Rate" value={money(transaction.totalRate)} />
+            {deal.totalRate ? (
+              <Detail label="Total Rate" value={money(deal.totalRate)} />
             ) : null}
-            {transaction.terms != null && transaction.terms !== "" ? (
+            {deal.terms != null && deal.terms !== "" ? (
               <Detail
-                label={`Terms (${transaction.terms}%)`}
-                value={transaction.termsAmount ? `-${money(transaction.termsAmount)}` : `${transaction.terms}%`}
+                label={`Terms (${deal.terms}%)`}
+                value={deal.termsAmount ? `-${money(deal.termsAmount)}` : `${deal.terms}%`}
               />
             ) : null}
-            {transaction.amountAfterTerms ? (
-              <Detail label="Amount After Terms" value={money(transaction.amountAfterTerms)} />
+            {deal.amountAfterTerms ? (
+              <Detail label="Amount After Terms" value={money(deal.amountAfterTerms)} />
             ) : null}
-            {transaction.cvd ? (
-              <Detail label="CVD" value={`-${money(transaction.cvd)}`} />
+            {deal.cvd ? (
+              <Detail label="CVD" value={`-${money(deal.cvd)}`} />
             ) : null}
-            {transaction.finalNet ? (
-              <Detail label="Final Net" value={money(transaction.finalNet)} />
+            {deal.finalNet ? (
+              <Detail label="Final Net" value={money(deal.finalNet)} />
             ) : null}
-            {transaction.dueDays != null && transaction.dueDays !== "" ? (
-              <Detail label="Due Days" value={`${transaction.dueDays} days`} />
+            {deal.dueDays != null && deal.dueDays !== "" ? (
+              <Detail label="Due Days" value={`${deal.dueDays} days`} />
             ) : null}
-            {transaction.sellType ? (
+            {deal.sellType ? (
               <Detail
                 label="Sell Type"
                 value={
-                  transaction.sellType === "Other" && transaction.otherSellType
-                    ? `Other (${transaction.otherSellType})`
-                    : transaction.sellType
+                  deal.sellType === "Other" && deal.otherSellType
+                    ? `Other (${deal.otherSellType})`
+                    : deal.sellType
                 }
               />
             ) : null}
-            <Detail label="Payment method" value={transaction.paymentMethod || "Bank transfer"} />
-            <Detail label="Seller" value={dealer?.name || "Not selected"} />
-            <Detail label="Buyer" value={buyer?.name || "Not selected"} />
+            <Detail label="Payment Method" value={deal.paymentMethod || "Bank transfer"} />
+            <Detail label="Seller Dealer" value={dealer?.name || "Not selected"} />
+            <Detail label="Buyer Dealer" value={buyer?.name || "Not selected"} />
             <Detail
-              label="Brokerage rate"
-              value={`${transaction.brokerageRate ?? 5}%`}
+              label="Brokerage Rate"
+              value={`${deal.brokerageRate ?? 5}%`}
             />
             <Detail
-              label="Brokerage earned"
+              label="Brokerage Earned"
               value={money(
-                transaction.brokerageEarned ??
-                  (((transaction.totalRate || transaction.amount || 0) * (transaction.brokerageRate || 0)) / 100)
+                deal.brokerageEarned ??
+                  (((deal.totalRate || deal.amount || 0) * (deal.brokerageRate || 0)) / 100)
               )}
             />
           </div>
         </Panel>
-        <Panel title="Transaction flow">
+        <Panel title="Parties & Notes">
           <div className="profile-card">
             <div className="dealer-avatar large">
-              {dealer?.name.slice(0, 2)}
+              {dealer?.name.slice(0, 2) || "D"}
             </div>
             <div>
-              <b>{dealer?.name}</b>
-              <small>{dealer?.location}</small>
-              <button
-                className="link-btn"
-                onClick={() => onNavigate("/dealer-profile?id=" + dealer?.id)}
-              >
-                View dealer profile <ArrowUpRight size={13} />
-              </button>
+              <b>{dealer?.name || "Unassigned"}</b>
+              <small>{dealer?.location || "No location"}</small>
+              {dealer?.id && (
+                <button
+                  className="link-btn"
+                  onClick={() => onNavigate("/dealer-profile?id=" + dealer.id)}
+                >
+                  View dealer profile <ArrowUpRight size={13} />
+                </button>
+              )}
             </div>
           </div>
           <div className="detail-grid single">
             <Detail
-              label="Description"
-              value={transaction.notes || "No description added"}
+              label="Description / Notes"
+              value={deal.notes || "No description added"}
             />
           </div>
         </Panel>
-        <Panel title="Payment timeline" className="items-panel">
-          <div className="item-row">
-            <div className="gem-icon">
-              <Check size={18} />
+        <Panel title="Payment settlement & history" className="items-panel">
+          <div className="payment-settlement-summary" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px", padding: "18px 20px", background: "#fbfcfd", borderBottom: "1px solid var(--line)" }}>
+            <div>
+              <span style={{ fontSize: "11px", color: "var(--muted)" }}>Original Amount</span>
+              <strong style={{ display: "block", fontSize: "18px", fontFamily: "Manrope", marginTop: "4px" }}>{money(originalAmount)}</strong>
             </div>
             <div>
-              <b>{transaction.status}</b>
-              <small>
-                {transaction.date} - {transaction.paymentMethod}
-              </small>
+              <span style={{ fontSize: "11px", color: "var(--muted)" }}>Total Paid</span>
+              <strong style={{ display: "block", fontSize: "18px", fontFamily: "Manrope", marginTop: "4px", color: "var(--green)" }}>{money(totalPaid)}</strong>
             </div>
-            <strong>{money(transaction.totalRate || transaction.amount)}</strong>
+            <div>
+              <span style={{ fontSize: "11px", color: "var(--muted)" }}>Remaining Balance</span>
+              <strong style={{ display: "block", fontSize: "18px", fontFamily: "Manrope", marginTop: "4px", color: remainingAmount > 0 ? "var(--yellow)" : "var(--ink)" }}>{money(remainingAmount)}</strong>
+            </div>
+          </div>
+          <div style={{ padding: "16px 20px" }}>
+            <h4 style={{ margin: "0 0 12px", fontSize: "13px" }}>Payment Records ({dealPayments.length})</h4>
+            {dealPayments.length ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {dealPayments.map((p) => (
+                  <div key={p.id} className="item-row" style={{ margin: 0, padding: "12px 14px", border: "1px solid var(--line)", borderRadius: "8px", background: "#fff" }}>
+                    <div className="gem-icon">
+                      <Check size={16} />
+                    </div>
+                    <div>
+                      <b>{p.method} — {money(p.amount)}</b>
+                      <small>{p.date} {p.notes ? `• ${p.notes}` : ""}</small>
+                    </div>
+                    <strong style={{ color: "var(--green)" }}>{money(p.amount)}</strong>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state" style={{ minHeight: "90px" }}>
+                <span>No payments recorded for this deal yet.</span>
+              </div>
+            )}
+            <div style={{ marginTop: "16px", display: "flex", justifyContent: "flex-end" }}>
+              <Button onClick={() => onNavigate("/payments")}>
+                Go to Payments
+              </Button>
+            </div>
           </div>
         </Panel>
       </div>
 
-      <EditTransactionModal
+      <EditDealModal
         open={editModal}
         onClose={() => setEditModal(false)}
-        transaction={transaction}
-        onSave={handleSaveTransaction}
+        transaction={deal}
+        onSave={handleSaveDeal}
       />
     </>
   );
 }
 
-function EditTransactionModal({ open, onClose, transaction, onSave }) {
+function EditDealModal({ open, onClose, transaction, onSave }) {
   const { data } = useData();
   const sellerDealers = data.dealers.filter(
     (d) => !d.type || d.type === "seller" || d.type === "both"
@@ -1407,8 +1432,8 @@ function EditTransactionModal({ open, onClose, transaction, onSave }) {
     const dueDays = Number(form.dueDays);
     const brokerageRate = Number(form.brokerageRate);
 
-    if (!form.name.trim()) return setError("Please enter a transaction name.");
-    if (!form.date) return setError("Please select a transaction date.");
+    if (!form.name.trim()) return setError("Please enter a deal name.");
+    if (!form.date) return setError("Please select a deal date.");
     if (!form.diamondCarat || !Number.isFinite(carat) || carat <= 0) {
       return setError("Diamond carat must be a valid number greater than 0.");
     }
@@ -1466,7 +1491,7 @@ function EditTransactionModal({ open, onClose, transaction, onSave }) {
       });
       onClose();
     } catch (err) {
-      setError(err?.message || "Failed to update transaction.");
+      setError(err?.message || "Failed to update deal.");
     }
   };
 
@@ -1474,7 +1499,7 @@ function EditTransactionModal({ open, onClose, transaction, onSave }) {
     <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
       <div className="modal-card" style={{ maxWidth: "660px" }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
-          <h3>Edit transaction — {transaction.id}</h3>
+          <h3>Edit deal — {transaction.id}</h3>
           <button className="icon-btn" onClick={onClose} aria-label="Close modal">
             <X size={16} />
           </button>
@@ -1484,7 +1509,7 @@ function EditTransactionModal({ open, onClose, transaction, onSave }) {
             {error && <div className="form-error">{error}</div>}
             <div className="form-grid" style={{ padding: 0 }}>
               <label className="field-group">
-                <span className="field-title">Transaction Name</span>
+                <span className="field-title">Deal Name</span>
                 <input
                   name="name"
                   value={form.name}
@@ -1494,7 +1519,7 @@ function EditTransactionModal({ open, onClose, transaction, onSave }) {
                 />
               </label>
               <label className="field-group">
-                <span className="field-title">Transaction Date</span>
+                <span className="field-title">Deal Date</span>
                 <input
                   name="date"
                   type="date"
@@ -1563,10 +1588,12 @@ function EditTransactionModal({ open, onClose, transaction, onSave }) {
                   type="text"
                   inputMode="decimal"
                   value={form.terms}
-                  onChange={(e) =>
+                  onChange={(event) =>
                     setForm((p) => ({
                       ...p,
-                      terms: e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1"),
+                      terms: event.target.value
+                        .replace(/[^0-9.]/g, "")
+                        .replace(/(\..*)\./g, "$1"),
                     }))
                   }
                   placeholder="e.g. 2"
@@ -1580,8 +1607,11 @@ function EditTransactionModal({ open, onClose, transaction, onSave }) {
                   type="text"
                   inputMode="numeric"
                   value={form.dueDays}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, dueDays: e.target.value.replace(/[^0-9]/g, "") }))
+                  onChange={(event) =>
+                    setForm((p) => ({
+                      ...p,
+                      dueDays: event.target.value.replace(/[^0-9]/g, ""),
+                    }))
                   }
                   placeholder="e.g. 30"
                   required
@@ -1645,57 +1675,10 @@ function EditTransactionModal({ open, onClose, transaction, onSave }) {
                   </div>
                 )}
               </div>
-            </div>
-
-            {/* Dedicated Amount Summary Section in Modal */}
-            <div className="amount-summary-card" style={{ border: "1px solid var(--line)", borderRadius: "8px", marginTop: "4px" }}>
-              <div style={{ fontSize: "12px", fontWeight: "700", color: "var(--ink)", paddingBottom: "4px", borderBottom: "1px solid var(--line)" }}>
-                Amount Summary
-              </div>
-              <div className="summary-row">
-                <div className="summary-label">
-                  <span>Total Rate</span>
-                  <small className="summary-hint">Carat × Per Carat Rate</small>
-                </div>
-                <div className="summary-value">{money(totalRateValue)}</div>
-              </div>
-              <div className="summary-row">
-                <div className="summary-label">
-                  <span>Terms ({termsPercentValue}%)</span>
-                  <small className="summary-hint">Deduction</small>
-                </div>
-                <div className="summary-value deduction">
-                  {termsAmountValue > 0 ? `-${money(termsAmountValue)}` : money(0)}
-                </div>
-              </div>
-              <div className="summary-row">
-                <div className="summary-label">
-                  <span>Amount After Terms</span>
-                  <small className="summary-hint">Total Rate − Terms</small>
-                </div>
-                <div className="summary-value">{money(amountAfterTermsValue)}</div>
-              </div>
-              <div className="summary-row cvd-row">
-                <div className="summary-label">
-                  <span className="cvd-label-text">CVD</span>
-                </div>
-                <div className="summary-value deduction">{cvdValue > 0 ? `-${money(cvdValue)}` : money(0)}</div>
-              </div>
-              <div className="summary-divider" />
-              <div className="summary-row final-net-row">
-                <div className="summary-label">
-                  <span className="final-net-title">Final Net</span>
-                  <small className="summary-hint">Amount After Terms − CVD</small>
-                </div>
-                <div className="final-net-value">{money(finalNetValue)}</div>
-              </div>
-            </div>
-
-            <div className="form-grid" style={{ padding: 0, marginTop: "8px" }}>
               <label className="field-group">
                 <span className="field-title">Seller</span>
                 <select name="sellerId" value={form.sellerId} onChange={set} required>
-                  <option value="">Select dealer</option>
+                  <option value="">Select seller</option>
                   {sellerDealers.map((d) => (
                     <option key={d.id} value={d.id}>{d.name}</option>
                   ))}
@@ -1704,7 +1687,7 @@ function EditTransactionModal({ open, onClose, transaction, onSave }) {
               <label className="field-group">
                 <span className="field-title">Buyer</span>
                 <select name="buyerId" value={form.buyerId} onChange={set} required>
-                  <option value="">Select dealer</option>
+                  <option value="">Select buyer</option>
                   {buyerDealers.map((d) => (
                     <option key={d.id} value={d.id}>{d.name}</option>
                   ))}
@@ -1717,10 +1700,12 @@ function EditTransactionModal({ open, onClose, transaction, onSave }) {
                   type="text"
                   inputMode="decimal"
                   value={form.brokerageRate}
-                  onChange={(e) =>
+                  onChange={(event) =>
                     setForm((p) => ({
                       ...p,
-                      brokerageRate: e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1"),
+                      brokerageRate: event.target.value
+                        .replace(/[^0-9.]/g, "")
+                        .replace(/(\..*)\./g, "$1"),
                     }))
                   }
                   placeholder="1.00"
@@ -1779,18 +1764,7 @@ function Detail({ label, value }) {
   );
 }
 
-function formatIndianNumber(value) {
-  if (value === "" || value == null) return "";
-  const clean = String(value).replace(/[^0-9.]/g, "");
-  const parts = clean.split(".");
-  const intPart = parts[0];
-  const decPart = parts.length > 1 ? "." + parts.slice(1).join("") : "";
-  if (!intPart) return decPart ? "0" + decPart : "";
-  const formattedInt = Number(intPart).toLocaleString("en-IN");
-  return formattedInt + decPart;
-}
-
-function NewTransaction({ onNavigate }) {
+function NewDeal({ onNavigate }) {
   const { data, addTransaction } = useData();
   const sellerDealers = data.dealers.filter(
     (d) => !d.type || d.type === "seller" || d.type === "both"
@@ -1856,8 +1830,8 @@ function NewTransaction({ onNavigate }) {
     const dueDays = Number(form.dueDays);
     const brokerageRate = Number(form.brokerageRate);
 
-    if (!form.name.trim()) return setError("Please enter a transaction name.");
-    if (!form.date) return setError("Please select a transaction date.");
+    if (!form.name.trim()) return setError("Please enter a deal name.");
+    if (!form.date) return setError("Please select a deal date.");
     if (!form.diamondCarat || !Number.isFinite(carat) || carat <= 0) {
       return setError("Diamond carat must be a valid number greater than 0.");
     }
@@ -1888,7 +1862,7 @@ function NewTransaction({ onNavigate }) {
     const finalNet = Math.round((amountAfterTerms - cvd) * 100) / 100;
     const earned = Math.round(((totalRate * (Number.isFinite(brokerageRate) ? brokerageRate : 5)) / 100) * 100) / 100;
 
-    const transaction = {
+    const deal = {
       id: nextId("TRX", data.transactions),
       name: form.name.trim(),
       date: form.date,
@@ -1916,10 +1890,10 @@ function NewTransaction({ onNavigate }) {
 
     setSubmitting(true);
     try {
-      await addTransaction(transaction);
-      onNavigate("/transaction-details?id=" + transaction.id);
+      await addTransaction(deal);
+      onNavigate("/transaction-details?id=" + deal.id);
     } catch (err) {
-      setError(err?.message || "Failed to create transaction.");
+      setError(err?.message || "Failed to create deal.");
     } finally {
       setSubmitting(false);
     }
@@ -1929,17 +1903,17 @@ function NewTransaction({ onNavigate }) {
     <>
       <PageHeader
         backTo="/transactions"
-        backLabel="Back"
+        backLabel="Back to Deals"
         onNavigate={onNavigate}
-        eyebrow="Transactions"
-        title="New transaction"
-        description="Add a new diamond transaction to your records."
+        eyebrow="Deals"
+        title="New deal"
+        description="Add a new diamond deal to your records."
       />
       <form className="grouped-form" onSubmit={submit}>
         <Panel title="Deal details" className="form-panel">
           <div className="form-grid">
             <label className="field-group">
-              <span className="field-title">Transaction Name</span>
+              <span className="field-title">Deal Name</span>
               <input
                 name="name"
                 value={form.name}
@@ -1950,7 +1924,7 @@ function NewTransaction({ onNavigate }) {
             </label>
 
             <label className="field-group">
-              <span className="field-title">Transaction Date</span>
+              <span className="field-title">Deal Date</span>
               <input
                 name="date"
                 type="date"
@@ -2056,26 +2030,26 @@ function NewTransaction({ onNavigate }) {
                 required
               />
             </label>
-              <label className="field-group">
-                <span className="field-title">CVD Amount</span>
-                <div className="input-with-symbol">
-                  <span className="input-symbol">₹</span>
-                  <input
-                    name="cvd"
-                    type="text"
-                    inputMode="decimal"
-                    value={form.cvd}
-                    onChange={(e) => {
-                      const raw = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
-                      setForm((p) => ({
-                        ...p,
-                        cvd: raw ? formatIndianNumber(raw) : "",
-                      }));
-                    }}
-                    placeholder="0"
-                  />
-                </div>
-              </label>
+            <label className="field-group">
+              <span className="field-title">CVD Amount</span>
+              <div className="input-with-symbol">
+                <span className="input-symbol">₹</span>
+                <input
+                  name="cvd"
+                  type="text"
+                  inputMode="decimal"
+                  value={form.cvd}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+                    setForm((p) => ({
+                      ...p,
+                      cvd: raw ? formatIndianNumber(raw) : "",
+                    }));
+                  }}
+                  placeholder="0"
+                />
+              </div>
+            </label>
 
             <div className="field-group">
               <span className="field-title">Sell Type</span>
@@ -2128,7 +2102,6 @@ function NewTransaction({ onNavigate }) {
           </div>
         </Panel>
 
-        {/* Dedicated Amount Summary Section */}
         <Panel title="Amount Summary" className="form-panel amount-summary-panel">
           <div className="amount-summary-card">
             <div className="summary-row">
@@ -2181,7 +2154,7 @@ function NewTransaction({ onNavigate }) {
             <label className="field-group">
               <span className="field-title">Seller</span>
               <select name="sellerId" value={form.sellerId} onChange={set} required>
-                <option value="">Select existing dealer</option>
+                <option value="">Select seller dealer</option>
                 {sellerDealers.map((dealer) => (
                   <option key={dealer.id} value={dealer.id}>{dealer.name}</option>
                 ))}
@@ -2191,7 +2164,7 @@ function NewTransaction({ onNavigate }) {
             <label className="field-group">
               <span className="field-title">Buyer</span>
               <select name="buyerId" value={form.buyerId} onChange={set} required>
-                <option value="">Select existing dealer</option>
+                <option value="">Select buyer dealer</option>
                 {buyerDealers.map((dealer) => (
                   <option key={dealer.id} value={dealer.id}>{dealer.name}</option>
                 ))}
@@ -2236,7 +2209,7 @@ function NewTransaction({ onNavigate }) {
           </div>
         </Panel>
 
-        <Panel title="Transaction status" className="form-panel">
+        <Panel title="Deal status" className="form-panel">
           <div className="form-grid">
             <label className="field-group">
               <span className="field-title">Status</span>
@@ -2260,13 +2233,14 @@ function NewTransaction({ onNavigate }) {
             Cancel
           </Button>
           <Button type="submit" disabled={submitting}>
-            {submitting ? "Creating..." : "Create transaction"}
+            {submitting ? "Creating..." : "Create deal"}
           </Button>
         </div>
       </form>
     </>
   );
 }
+
 function DealerProfile({ onNavigate }) {
   const { data, updateDealer } = useData();
   const [editModal, setEditModal] = useState(false);
@@ -2293,11 +2267,11 @@ function DealerProfile({ onNavigate }) {
     <>
       <PageHeader
         backTo="/dealers"
-        backLabel="Back"
+        backLabel="Back to Dealers"
         onNavigate={onNavigate}
         eyebrow="Dealers"
         title={dealer.name}
-        description="Dealer profile and transaction history."
+        description="Dealer profile and deal history."
         action={
           <div className="header-actions">
             <Button secondary onClick={() => setEditModal(true)} icon={Pencil}>
@@ -2307,8 +2281,8 @@ function DealerProfile({ onNavigate }) {
               secondary
               onClick={() =>
                 downloadCsv(
-                  `${dealer.id}-transactions.csv`,
-                  ["ID", "Dealer", "Date", "Amount", "Status"],
+                  `${dealer.id}-deals.csv`,
+                  ["Deal ID", "Dealer", "Date", "Amount", "Status"],
                   transactionRows({
                     ...data,
                     transactions: dealerTransactions,
@@ -2342,12 +2316,12 @@ function DealerProfile({ onNavigate }) {
           className="link-btn"
           onClick={() => onNavigate("/transactions")}
         >
-          View all transactions <ArrowUpRight size={14} />
+          View all deals <ArrowUpRight size={14} />
         </button>
       </Panel>
       <div className="stats-grid three">
         <Stat
-          label="Total transactions"
+          label="Total deals"
           value={dealerTransactions.length}
           change="12.5%"
           icon={CreditCard}
@@ -2361,7 +2335,7 @@ function DealerProfile({ onNavigate }) {
           icon={CircleDollarSign}
         />
         <Stat
-          label="Avg. transaction"
+          label="Avg. deal volume"
           value={money(
             dealerTransactions.length
               ? dealerTransactions.reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0) /
@@ -2372,8 +2346,8 @@ function DealerProfile({ onNavigate }) {
           icon={BarChart3}
         />
       </div>
-      <Panel title="Transaction history">
-        <TransactionTable
+      <Panel title="Deal history">
+        <DealTable
           rows={transactionRows({ ...data, transactions: dealerTransactions })}
           onRowClick={(rowId) => onNavigate("/transaction-details?id=" + rowId)}
         />
@@ -2400,7 +2374,7 @@ function DealerModal({ open, onClose, dealer, onSave }) {
   });
   const [error, setError] = useState("");
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (dealer && dealer.id) {
       setForm({
         name: dealer.name || "",
@@ -2564,7 +2538,7 @@ function DeleteDealerModal({ dealer, onClose, onConfirm, isUsed }) {
         <div className="modal-body">
           {isUsed ? (
             <div className="delete-warning-box">
-              This dealer is used in an existing transaction.
+              This dealer is linked to an existing deal or payment record.
             </div>
           ) : (
             <p className="delete-confirm-text">
@@ -2591,16 +2565,46 @@ function DeleteDealerModal({ dealer, onClose, onConfirm, isUsed }) {
   );
 }
 
-function DesktopDealers({ onNavigate, onAdd, onEdit, onDelete }) {
-  const { data } = useData();
+function Dealers({ onNavigate }) {
+  const { data, addDealer, updateDealer, deleteDealer } = useData();
+  const [modalDealer, setModalDealer] = useState(null);
+  const [deletingDealer, setDeletingDealer] = useState(null);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("All");
+
   const list = data.dealers.filter((dealer) =>
     `${dealer.name} ${dealer.location}`
       .toLowerCase()
       .includes(query.toLowerCase()) &&
     (status === "All" || dealer.status === status),
   );
+
+  const handleSave = (dealerData) => {
+    if (modalDealer && modalDealer.id) {
+      updateDealer(modalDealer.id, dealerData);
+    } else {
+      addDealer(dealerData);
+    }
+  };
+
+  const isDeletingUsed = Boolean(
+    deletingDealer &&
+      (data.transactions.some(
+        (t) =>
+          t.dealerId === deletingDealer.id ||
+          t.sellerId === deletingDealer.id ||
+          t.buyerId === deletingDealer.id,
+      ) ||
+        data.payments.some((p) => p.dealerId === deletingDealer.id)),
+  );
+
+  const handleConfirmDelete = (id) => {
+    const res = deleteDealer(id);
+    if (res.success) {
+      setDeletingDealer(null);
+    }
+  };
+
   return (
     <>
       <PageHeader
@@ -2611,7 +2615,7 @@ function DesktopDealers({ onNavigate, onAdd, onEdit, onDelete }) {
         title="Dealers"
         description="Manage your network of diamond dealers."
         action={
-          <Button onClick={onAdd} icon={Plus}>
+          <Button onClick={() => setModalDealer({})} icon={Plus}>
             Add dealer
           </Button>
         }
@@ -2642,14 +2646,11 @@ function DesktopDealers({ onNavigate, onAdd, onEdit, onDelete }) {
         title="All dealers"
         action={
           <div className="panel-actions">
-            <div className="search">
-              <Search size={16} />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search dealers..."
-              />
-            </div>
+            <SearchInput
+              value={query}
+              onChange={setQuery}
+              placeholder="Search dealers..."
+            />
             <select
               className="filter"
               value={status}
@@ -2664,93 +2665,141 @@ function DesktopDealers({ onNavigate, onAdd, onEdit, onDelete }) {
         }
       >
         {list.length ? (
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Dealer</th>
-                  <th>Location</th>
-                  <th>Transactions</th>
-                  <th>Total volume</th>
-                  <th>Status</th>
-                  <th style={{ textAlign: "right", paddingRight: "20px" }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {list.map((dealer) => {
-                  const volume = data.transactions
-                    .filter((item) => item.dealerId === dealer.id || item.sellerId === dealer.id)
-                    .reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0);
-                  const count = data.transactions.filter(
-                    (item) => item.dealerId === dealer.id || item.sellerId === dealer.id,
-                  ).length;
-                  return (
-                    <tr
-                      key={dealer.id}
-                      onClick={() =>
-                        onNavigate("/dealer-profile?id=" + dealer.id)
-                      }
-                      onKeyDown={(event) =>
-                        (event.key === "Enter" || event.key === " ") &&
-                        onNavigate("/dealer-profile?id=" + dealer.id)
-                      }
-                      tabIndex={0}
-                      role="button"
-                      className="clickable-row"
-                    >
-                      <td>
-                        <div className="table-person">
-                          <div className="dealer-avatar">
-                            {dealer.name.slice(0, 2)}
+          <>
+            <div className="table-scroll desktop-data-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Dealer</th>
+                    <th>Location</th>
+                    <th>Deals</th>
+                    <th>Total volume</th>
+                    <th>Status</th>
+                    <th style={{ textAlign: "right", paddingRight: "20px" }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {list.map((dealer) => {
+                    const volume = data.transactions
+                      .filter((item) => item.dealerId === dealer.id || item.sellerId === dealer.id)
+                      .reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0);
+                    const count = data.transactions.filter(
+                      (item) => item.dealerId === dealer.id || item.sellerId === dealer.id,
+                    ).length;
+                    return (
+                      <tr
+                        key={dealer.id}
+                        onClick={() =>
+                          onNavigate("/dealer-profile?id=" + dealer.id)
+                        }
+                        onKeyDown={(event) =>
+                          (event.key === "Enter" || event.key === " ") &&
+                          onNavigate("/dealer-profile?id=" + dealer.id)
+                        }
+                        tabIndex={0}
+                        role="button"
+                        className="clickable-row"
+                      >
+                        <td>
+                          <div className="table-person">
+                            <div className="dealer-avatar">
+                              {dealer.name.slice(0, 2)}
+                            </div>
+                            <div>
+                              <b>{dealer.name}</b>
+                              <small style={{ display: "block", color: "var(--muted)", fontSize: "10px", marginTop: "2px" }}>
+                                {dealerTypeLabel(dealer.type)}
+                              </small>
+                            </div>
                           </div>
-                          <div>
-                            <b>{dealer.name}</b>
-                            <small style={{ display: "block", color: "var(--muted)", fontSize: "10px", marginTop: "2px" }}>
-                              {dealerTypeLabel(dealer.type)}
-                            </small>
+                        </td>
+                        <td>{dealer.location}</td>
+                        <td>{count}</td>
+                        <td>
+                          <b>{money(volume)}</b>
+                        </td>
+                        <td>
+                          <Status>{dealer.status}</Status>
+                        </td>
+                        <td>
+                          <div className="table-actions">
+                            <button
+                              type="button"
+                              className="btn-action"
+                              aria-label={`Edit ${dealer.name}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setModalDealer(dealer);
+                              }}
+                            >
+                              <Pencil size={13} /> Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-action danger"
+                              aria-label={`Remove ${dealer.name}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setDeletingDealer(dealer);
+                              }}
+                            >
+                              <Trash2 size={13} /> Remove
+                            </button>
                           </div>
-                        </div>
-                      </td>
-                      <td>{dealer.location}</td>
-                      <td>{count}</td>
-                      <td>
-                        <b>{money(volume)}</b>
-                      </td>
-                      <td>
-                        <Status>{dealer.status}</Status>
-                      </td>
-                      <td>
-                        <div className="table-actions">
-                          <button
-                            type="button"
-                            className="btn-action"
-                            aria-label={`Edit ${dealer.name}`}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              onEdit(dealer);
-                            }}
-                          >
-                            <Pencil size={13} /> Edit
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-action danger"
-                            aria-label={`Remove ${dealer.name}`}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              onDelete(dealer);
-                            }}
-                          >
-                            <Trash2 size={13} /> Remove
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="mobile-data-list">
+              {list.map((dealer) => {
+                const records = data.transactions.filter(
+                  (item) => item.dealerId === dealer.id || item.sellerId === dealer.id,
+                );
+                const volume = records.reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0);
+                return (
+                  <div
+                    key={dealer.id}
+                    className="mobile-card-item"
+                    onClick={() => onNavigate("/dealer-profile?id=" + dealer.id)}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <div className="mobile-card-main">
+                      <div className="mobile-card-copy">
+                        <b>{dealer.name}</b>
+                        <span>{dealer.location} • {dealerTypeLabel(dealer.type)}</span>
+                      </div>
+                      <div className="mobile-card-amount">{money(volume)}</div>
+                    </div>
+                    <div className="mobile-card-meta">
+                      <span>{records.length} deals</span>
+                      <Status>{dealer.status}</Status>
+                    </div>
+                    <div className="mobile-card-actions" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        className="link-btn-subtle"
+                        onClick={() => setModalDealer(dealer)}
+                      >
+                        Edit
+                      </button>
+                      <span className="dot-sep">•</span>
+                      <button
+                        type="button"
+                        className="link-btn-subtle danger"
+                        onClick={() => setDeletingDealer(dealer)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         ) : (
           <div className="empty-state">
             <Search size={20} />
@@ -2759,74 +2808,139 @@ function DesktopDealers({ onNavigate, onAdd, onEdit, onDelete }) {
           </div>
         )}
       </Panel>
+
+      <DealerModal
+        open={Boolean(modalDealer)}
+        onClose={() => setModalDealer(null)}
+        dealer={modalDealer}
+        onSave={handleSave}
+      />
+
+      <DeleteDealerModal
+        dealer={deletingDealer}
+        onClose={() => setDeletingDealer(null)}
+        onConfirm={handleConfirmDelete}
+        isUsed={isDeletingUsed}
+      />
     </>
   );
 }
-function MobilePaymentCards({ items }) {
-  return <div className="mobile-data-list payment-card-list">{items.map(item => <div className="mobile-card-item" key={item.id}><div className="mobile-card-main"><div className="mobile-card-copy"><b>{item.title}</b><span>{item.subtitle}</span></div><div className="mobile-card-amount">{item.amount}</div></div><div className="mobile-card-meta"><span>{item.meta}</span><Status>{item.status}</Status></div></div>)}</div>;
-}
 
-function DesktopPayments({ onNavigate }) {
+function Payments({ onNavigate }) {
   const { data, addPayment } = useData();
   const [open, setOpen] = useState(false);
-  const [paymentStatus, setPaymentStatus] = useState("All");
-  const [form, setForm] = useState({
-    transactionId: data.transactions[0]?.id || "",
-    amount: "",
-    method: "Bank transfer",
-  });
+  const [selectedHistoryId, setSelectedHistoryId] = useState(null);
   const [error, setError] = useState("");
-  const set = (event) =>
+  const [filterStatus, setFilterStatus] = useState("All");
+  const [form, setForm] = useState({
+    transactionId: "",
+    amount: "",
+    date: new Date().toISOString().slice(0, 10),
+    method: "Bank transfer",
+    notes: "",
+  });
+
+  // Calculate real deal payment aggregates
+  const dealRows = data.transactions.map((deal) => {
+    const payments = data.payments.filter((p) => p.transactionId === deal.id);
+    const original = Number(deal.totalRate || deal.amount) || 0;
+    const paid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const remaining = Math.max(0, original - paid);
+    const status = paid <= 0 ? "Pending" : remaining <= 0 ? "Paid" : "Partially Paid";
+    const lastPayment = payments.slice().sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
+    const dealer = data.dealers.find((item) => item.id === (deal.dealerId || deal.sellerId));
+
+    return {
+      deal,
+      dealer,
+      payments,
+      original,
+      paid,
+      remaining,
+      status,
+      lastPayment,
+    };
+  });
+
+  // Top summary totals calculated strictly from DB data
+  const totalDue = dealRows.reduce((sum, row) => sum + row.original, 0);
+  const totalPaid = dealRows.reduce((sum, row) => sum + Math.min(row.original, row.paid), 0);
+  const totalRemaining = dealRows.reduce((sum, row) => sum + row.remaining, 0);
+
+  const selectedDealRow = dealRows.find((row) => row.deal.id === form.transactionId);
+  const paymentAmountNum = Number(String(form.amount).replace(/,/g, "")) || 0;
+  const remainingAfterPayment = selectedDealRow
+    ? Math.max(0, selectedDealRow.remaining - paymentAmountNum)
+    : 0;
+
+  const setField = (event) => {
     setForm((previous) => ({
       ...previous,
       [event.target.name]: event.target.value,
     }));
-  const submit = (event) => {
-    event.preventDefault();
-    const amount = Number(form.amount.replace(/[^0-9.]/g, ""));
-    if (!form.transactionId || !amount)
-      return setError("Select a transaction and enter a valid amount.");
-    const transaction = data.transactions.find(
-      (item) => item.id === form.transactionId,
-    );
-    addPayment({
-      id: nextId("PAY", data.payments),
-      transactionId: transaction.id,
-      dealerId: transaction.dealerId,
+  };
+
+  const openAddPaymentForDeal = (dealId = "") => {
+    setForm({
+      transactionId: dealId || (dealRows.find((r) => r.remaining > 0)?.deal.id || ""),
+      amount: "",
       date: new Date().toISOString().slice(0, 10),
-      amount,
-      method: form.method,
-      status: "Completed",
+      method: "Bank transfer",
+      notes: "",
     });
+    setError("");
+    setOpen(true);
+  };
+
+  const closeForm = () => {
     setOpen(false);
-    setForm((previous) => ({ ...previous, amount: "" }));
     setError("");
   };
-  const paymentItems = data.payments
-    .filter((payment) => paymentStatus === "All" || payment.status === paymentStatus)
-    .map((payment) => {
-    const dealer = data.dealers.find((item) => item.id === payment.dealerId);
-    const transaction = data.transactions.find(
-      (item) => item.id === payment.transactionId,
-    );
-    return {
-      id: payment.id,
-      title: transaction?.name || payment.transactionId,
-      subtitle: dealer?.name || "Unknown dealer",
-      meta: payment.date,
-      amount: money(payment.amount),
-      status: payment.status,
-      details: [
-        ["Payment ID", payment.id],
-        ["Transaction", payment.transactionId],
-        ["Dealer", dealer?.name],
-        ["Method", payment.method],
-        ["Date", payment.date],
-        ["Amount", money(payment.amount)],
-        ["Status", payment.status],
-      ],
-    };
-    });
+
+  const submitPayment = async (event) => {
+    event.preventDefault();
+    setError("");
+
+    if (!selectedDealRow) {
+      return setError("Please select a deal.");
+    }
+
+    if (!paymentAmountNum || paymentAmountNum <= 0) {
+      return setError("Please enter a valid payment amount greater than 0.");
+    }
+
+    // Strict validation: blocked if payment exceeds remaining
+    if (paymentAmountNum > selectedDealRow.remaining) {
+      return setError(
+        `Payment amount (${money(paymentAmountNum)}) cannot exceed the remaining balance of ${money(selectedDealRow.remaining)}.`
+      );
+    }
+
+    try {
+      const newPayment = {
+        id: nextId("PAY", data.payments),
+        transactionId: selectedDealRow.deal.id,
+        dealerId: selectedDealRow.deal.dealerId || selectedDealRow.deal.sellerId,
+        date: form.date,
+        amount: paymentAmountNum,
+        method: form.method,
+        status: "Completed",
+        notes: form.notes.trim(),
+      };
+
+      await addPayment(newPayment);
+      closeForm();
+    } catch (err) {
+      console.error("Payment creation error:", err);
+      setError(err?.message || "Unable to record payment. Please try again.");
+    }
+  };
+
+  const filteredDeals = dealRows.filter((row) => {
+    if (filterStatus === "All") return true;
+    return row.status === filterStatus;
+  });
+
   return (
     <>
       <PageHeader
@@ -2835,241 +2949,408 @@ function DesktopPayments({ onNavigate }) {
         onNavigate={onNavigate}
         eyebrow="Finance"
         title="Payments"
-        description="Review incoming and outgoing payments."
+        description="Track and record partial and full payments against your deals."
         action={
-          <button
-            type="button"
-            className="button"
-            onClick={() => setOpen(true)}
-          >
-            <Plus size={16} />
-            Add payment
-          </button>
+          <Button onClick={() => openAddPaymentForDeal()} icon={Plus}>
+            Add Payment
+          </Button>
         }
       />
-      {open && (
-        <form className="payment-form panel" onSubmit={submit}>
-          <div className="panel-head">
-            <h2>Add payment</h2>
-            <button
-              type="button"
-              className="icon-btn"
-              onClick={() => setOpen(false)}
-            >
-              <X size={17} />
-            </button>
-          </div>
-          <div className="form-grid">
-            <label>
-              Transaction
-              <select
-                name="transactionId"
-                value={form.transactionId}
-                onChange={set}
-              >
-                {data.transactions.map((item) => (
-                  <option key={item.id}>{item.id}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Amount
-              <input
-                name="amount"
-                value={form.amount}
-                onChange={(event) =>
-                  setForm((previous) => ({
-                    ...previous,
-                    amount: event.target.value
-                      .replace(/[^0-9.]/g, "")
-                      .replace(/(\..*)\./g, "$1"),
-                  }))
-                }
-                inputMode="decimal"
-                pattern="[0-9.]*"
-                placeholder={"\u20b9 0.00"}
-              />
-            </label>
-            <label>
-              Payment method
-              <select name="method" value={form.method} onChange={set}>
-                <option>Bank transfer</option>
-                <option>Cash</option>
-                <option>Credit card</option>
-              </select>
-            </label>
-          </div>
-          {error && (
-            <div className="form-error" role="alert">
-              {error}
+
+      <div className="payment-summary">
+        <div className="stat">
+          <div className="stat-top">
+            <span>Total Due</span>
+            <div className="stat-icon">
+              <CircleDollarSign size={16} />
             </div>
-          )}
-          <div className="form-actions">
-            <Button
-              secondary
-              type="button"
-              onClick={() => setOpen(false)}
-              icon={null}
-            >
-              Cancel
-            </Button>
-            <Button type="submit">Add payment</Button>
           </div>
-        </form>
-      )}
-      <Panel
-        title="Payment history"
-        action={
-          <select
-            className="select"
-            value={paymentStatus}
-            onChange={(event) => setPaymentStatus(event.target.value)}
-            aria-label="Filter payments by status"
-          >
-            <option value="All">All payments</option>
-            <option value="Completed">Completed</option>
-            <option value="Pending">Pending</option>
-          </select>
-        }
-      >
-        <MobilePaymentCards items={paymentItems} />
-      </Panel>
-    </>
-  );
-}
-function DesktopEarnings({ onNavigate }) {
-  const { data } = useData();
-  const [period, setPeriod] = useState("This month");
-  const total = data.transactions.reduce(
-    (sum, item) => sum + (item.amount * item.brokerageRate) / 100,
-    0,
-  );
-  const pending = data.transactions
-    .filter((item) => item.status !== "Completed")
-    .reduce((sum, item) => sum + (item.amount * item.brokerageRate) / 100, 0);
-  return (
-    <>
-      <PageHeader
-        backTo="/"
-        backLabel="Back to Dashboard"
-        onNavigate={onNavigate}
-        eyebrow="Finance"
-        title="Earnings overview"
-        description="Track your brokerage income and performance."
-        action={
-          <select
-            className="select"
-            value={period}
-            onChange={(event) => setPeriod(event.target.value)}
-            aria-label="Earnings period"
-          >
-            <option>This month</option>
-            <option>This quarter</option>
-            <option>This year</option>
-          </select>
-        }
-      />
-      <div className="earnings-support">
-        <div className="panel support-card">
-          <div>
-            <span>Total earnings</span>
-            <strong>{money(total)}</strong>
-            <small>Shared transaction data</small>
-          </div>
-          <div className="stat-icon">
-            <CircleDollarSign size={17} />
-          </div>
+          <strong>{money(totalDue)}</strong>
+          <small>Original deal volume</small>
         </div>
-        <div className="panel support-card">
-          <div>
-            <span>Pending earnings</span>
-            <strong>{money(pending)}</strong>
-            <small>
-              {
-                data.transactions.filter((item) => item.status !== "Completed")
-                  .length
-              }{" "}
-              pending transactions
-            </small>
+        <div className="stat">
+          <div className="stat-top">
+            <span>Total Paid</span>
+            <div className="stat-icon" style={{ background: "var(--green-soft)", color: "var(--green)" }}>
+              <Check size={16} />
+            </div>
           </div>
-          <div className="stat-icon">
-            <Wallet size={17} />
+          <strong>{money(totalPaid)}</strong>
+          <small className="up">Collected payments</small>
+        </div>
+        <div className="stat">
+          <div className="stat-top">
+            <span>Total Remaining</span>
+            <div className="stat-icon" style={{ background: "var(--yellow-soft)", color: "var(--yellow)" }}>
+              <Wallet size={16} />
+            </div>
           </div>
+          <strong>{money(totalRemaining)}</strong>
+          <small className="down">Outstanding balance</small>
         </div>
       </div>
-      <Panel
-        title="Earnings trend"
-        action={
-          <select
-            className="select"
-            value={period}
-            onChange={(event) => setPeriod(event.target.value)}
-            aria-label="Earnings chart period"
-          >
-            <option>This month</option>
-            <option>This quarter</option>
-            <option>This year</option>
-          </select>
-        }
-        className="revenue-panel large-chart"
-      >
-        <MiniChart />
-      </Panel>
-      <Panel title="Earnings breakdown" className="breakdown-table">
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Transaction</th>
-                <th>Dealer</th>
-                <th>Date</th>
-                <th>Gross amount</th>
-                <th>Rate</th>
-                <th>Earnings</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.transactions.slice(0, 10).map((item) => {
-                const dealer = data.dealers.find(
-                  (entry) => entry.id === item.dealerId,
-                );
-                return (
-                  <tr key={item.id}>
-                    <td>
-                      <b>{item.id}</b>
-                    </td>
-                    <td>{dealer?.name}</td>
-                    <td>{item.date}</td>
-                    <td>{money(item.amount)}</td>
-                    <td>{item.brokerageRate}%</td>
-                    <td>
-                      <b>{money((item.amount * item.brokerageRate) / 100)}</b>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+
+      {open && (
+        <div className="modal-overlay" onClick={closeForm} role="dialog" aria-modal="true">
+          <div className="modal-card" style={{ maxWidth: "600px" }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <h3>Record Deal Payment</h3>
+              <button className="icon-btn" onClick={closeForm} aria-label="Close form">
+                <X size={16} />
+              </button>
+            </div>
+            <form onSubmit={submitPayment}>
+              <div className="modal-body">
+                {error && <div className="form-error" role="alert">{error}</div>}
+                
+                <label className="field-group">
+                  <span className="field-title">Select Deal</span>
+                  <select
+                    name="transactionId"
+                    value={form.transactionId}
+                    onChange={setField}
+                    required
+                  >
+                    <option value="">-- Choose a Deal --</option>
+                    {dealRows.map((row) => (
+                      <option key={row.deal.id} value={row.deal.id}>
+                        {row.deal.name} ({money(row.original)}) — Remaining: {money(row.remaining)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {selectedDealRow && (
+                  <div className="payment-live-details">
+                    <Detail label="Original Deal Amount" value={money(selectedDealRow.original)} />
+                    <Detail label="Total Already Paid" value={money(selectedDealRow.paid)} />
+                    <Detail label="Remaining Before Payment" value={money(selectedDealRow.remaining)} />
+                  </div>
+                )}
+
+                <div className="form-grid" style={{ padding: 0, marginTop: "12px" }}>
+                  <label className="field-group">
+                    <span className="field-title">Payment Amount</span>
+                    <div className="input-with-symbol">
+                      <span className="input-symbol">₹</span>
+                      <input
+                        name="amount"
+                        value={form.amount}
+                        onChange={(event) => {
+                          const raw = event.target.value
+                            .replace(/[^0-9.]/g, "")
+                            .replace(/(\..*)\./g, "$1");
+                          setForm((previous) => ({
+                            ...previous,
+                            amount: raw ? formatIndianNumber(raw) : "",
+                          }));
+                        }}
+                        inputMode="decimal"
+                        placeholder="e.g. 3,00,000"
+                        required
+                      />
+                    </div>
+                  </label>
+
+                  <label className="field-group">
+                    <span className="field-title">Payment Date</span>
+                    <input
+                      name="date"
+                      type="date"
+                      value={form.date}
+                      onChange={setField}
+                      required
+                    />
+                  </label>
+
+                  <label className="field-group">
+                    <span className="field-title">Payment Method</span>
+                    <select name="method" value={form.method} onChange={setField}>
+                      <option>Bank transfer</option>
+                      <option>UPI</option>
+                      <option>Cash</option>
+                      <option>Cheque</option>
+                      <option>Other</option>
+                    </select>
+                  </label>
+
+                  {selectedDealRow && (
+                    <div className="field-group calculated-cell">
+                      <div className="calculated-field-card">
+                        <div className="calc-header">
+                          <span className="field-title">Remaining After Payment</span>
+                        </div>
+                        <div className="calc-value">{money(remainingAfterPayment)}</div>
+                        <span className="calc-formula">Balance remaining on deal</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <label className="field-group full">
+                    <span className="field-title">Reference / Notes</span>
+                    <textarea
+                      name="notes"
+                      value={form.notes}
+                      onChange={setField}
+                      placeholder="Transaction reference, UTR, check number..."
+                      rows={2}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="modal-actions">
+                <Button secondary type="button" onClick={closeForm}>
+                  Cancel
+                </Button>
+                <Button type="submit">
+                  Record Payment
+                </Button>
+              </div>
+            </form>
+          </div>
         </div>
+      )}
+
+      <Panel
+        title="Deal Payments"
+        action={
+          <div className="panel-actions">
+            <select
+              className="filter"
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              aria-label="Filter by payment status"
+            >
+              <option value="All">All Statuses</option>
+              <option value="Pending">Pending</option>
+              <option value="Partially Paid">Partially Paid</option>
+              <option value="Paid">Paid</option>
+            </select>
+          </div>
+        }
+      >
+        {filteredDeals.length ? (
+          <>
+            {/* Desktop Table View */}
+            <div className="table-scroll desktop-data-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Deal</th>
+                    <th>Dealer</th>
+                    <th>Original Amount</th>
+                    <th>Paid</th>
+                    <th>Remaining</th>
+                    <th>Status</th>
+                    <th>Last Payment</th>
+                    <th style={{ textAlign: "right", paddingRight: "20px" }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredDeals.map((row) => (
+                    <React.Fragment key={row.deal.id}>
+                      <tr>
+                        <td>
+                          <b>{row.deal.name}</b>
+                          <small className="table-id">{row.deal.id}</small>
+                        </td>
+                        <td>{row.dealer?.name || "Dealer not linked"}</td>
+                        <td><b>{money(row.original)}</b></td>
+                        <td style={{ color: "var(--green)", fontWeight: 600 }}>{money(row.paid)}</td>
+                        <td style={{ color: row.remaining > 0 ? "var(--yellow)" : "var(--muted)", fontWeight: 600 }}>
+                          {money(row.remaining)}
+                        </td>
+                        <td><Status>{row.status}</Status></td>
+                        <td>
+                          {row.lastPayment ? (
+                            <div>
+                              <span>{row.lastPayment.date}</span>
+                              <small className="table-id">{money(row.lastPayment.amount)}</small>
+                            </div>
+                          ) : (
+                            <span style={{ color: "var(--muted)" }}>No payments</span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          <div className="table-actions" style={{ justifyContent: "flex-end" }}>
+                            <button
+                              type="button"
+                              className="btn-action"
+                              onClick={() =>
+                                setSelectedHistoryId(selectedHistoryId === row.deal.id ? null : row.deal.id)
+                              }
+                            >
+                              {selectedHistoryId === row.deal.id ? "Hide history" : "History"} ({row.payments.length})
+                            </button>
+                            {row.remaining > 0 && (
+                              <button
+                                type="button"
+                                className="button secondary"
+                                style={{ height: "30px", fontSize: "11px", padding: "0 10px" }}
+                                onClick={() => openAddPaymentForDeal(row.deal.id)}
+                              >
+                                <Plus size={13} /> Pay
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                      {selectedHistoryId === row.deal.id && (
+                        <tr>
+                          <td colSpan={8} style={{ background: "#f8fafd", padding: "16px 20px" }}>
+                            <div className="payment-history-box" style={{ background: "#fff", border: "1px solid var(--line)", borderRadius: "8px", padding: "14px 18px" }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", borderBottom: "1px solid var(--line)", paddingBottom: "8px" }}>
+                                <strong>Payment History for {row.deal.name}</strong>
+                                <span style={{ fontSize: "12px", color: "var(--muted)" }}>
+                                  Total Paid: <b style={{ color: "var(--green)" }}>{money(row.paid)}</b> of {money(row.original)}
+                                </span>
+                              </div>
+                              {row.payments.length ? (
+                                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                                  {row.payments.map((payment) => (
+                                    <div
+                                      key={payment.id}
+                                      style={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        alignItems: "center",
+                                        padding: "8px 12px",
+                                        background: "#fafcff",
+                                        borderRadius: "6px",
+                                        border: "1px solid #edf2fa",
+                                        fontSize: "12px",
+                                      }}
+                                    >
+                                      <div>
+                                        <b style={{ marginRight: "12px" }}>{payment.date}</b>
+                                        <span style={{ color: "var(--muted)", marginRight: "12px" }}>Method: {payment.method}</span>
+                                        {payment.notes && <span style={{ color: "var(--ink)", fontStyle: "italic" }}>"{payment.notes}"</span>}
+                                      </div>
+                                      <strong style={{ color: "var(--green)", fontFamily: "Manrope" }}>
+                                        +{money(payment.amount)}
+                                      </strong>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span style={{ fontSize: "12px", color: "var(--muted)" }}>No payments recorded yet.</span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Card-Based Payments (Zero horizontal scrolling) */}
+            <div className="mobile-data-list">
+              {filteredDeals.map((row) => (
+                <article className="mobile-card-item" key={row.deal.id} style={{ cursor: "default" }}>
+                  <div className="mobile-card-main">
+                    <div className="mobile-card-copy">
+                      <b>{row.deal.name}</b>
+                      <span>{row.dealer?.name || "Dealer not linked"}</span>
+                    </div>
+                    <div className="mobile-card-amount">{money(row.original)}</div>
+                  </div>
+
+                  <div className="payment-deal-values" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", margin: "8px 0", padding: "10px 0", borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)" }}>
+                    <Detail label="Original" value={money(row.original)} />
+                    <Detail label="Paid" value={money(row.paid)} />
+                    <Detail label="Remaining" value={money(row.remaining)} />
+                  </div>
+
+                  <div className="mobile-card-meta">
+                    <span>Last: {row.lastPayment?.date || "None"}</span>
+                    <Status>{row.status}</Status>
+                  </div>
+
+                  <div className="mobile-card-actions" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "10px" }}>
+                    <button
+                      type="button"
+                      className="link-btn-subtle"
+                      onClick={() => setSelectedHistoryId(selectedHistoryId === row.deal.id ? null : row.deal.id)}
+                    >
+                      {selectedHistoryId === row.deal.id ? "Hide History" : `History (${row.payments.length})`}
+                    </button>
+                    {row.remaining > 0 && (
+                      <button
+                        type="button"
+                        className="button secondary"
+                        style={{ height: "32px", fontSize: "11px", padding: "0 12px" }}
+                        onClick={() => openAddPaymentForDeal(row.deal.id)}
+                      >
+                        <Plus size={13} /> Record Payment
+                      </button>
+                    )}
+                  </div>
+
+                  {selectedHistoryId === row.deal.id && (
+                    <div className="payment-history" style={{ marginTop: "12px", padding: "12px", borderRadius: "8px", background: "#f8fafd", border: "1px solid var(--line)" }}>
+                      <strong style={{ fontSize: "12px", display: "block", marginBottom: "8px" }}>Payment Records</strong>
+                      {row.payments.length ? (
+                        row.payments.map((p) => (
+                          <div key={p.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", padding: "4px 0", borderBottom: "1px dashed #e2e8f0" }}>
+                            <span>{p.date} · {p.method} {p.notes ? `(${p.notes})` : ""}</span>
+                            <b style={{ color: "var(--green)" }}>{money(p.amount)}</b>
+                          </div>
+                        ))
+                      ) : (
+                        <span style={{ fontSize: "11px", color: "var(--muted)" }}>No payments recorded.</span>
+                      )}
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="empty-state">
+            <Search size={20} />
+            <b>No deals found</b>
+            <span>Create a deal or change your filter to see payment records.</span>
+          </div>
+        )}
       </Panel>
     </>
   );
 }
+
 function Analytics({ onNavigate }) {
   const { data } = useData();
   const [period, setPeriod] = useState("Monthly");
 
   const analytics = calculateAnalytics(data.transactions, data.payments, period);
 
+  // Additional unified earnings and deals calculations
+  const totalDealsVolume = data.transactions.reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0);
+  const totalBrokerage = data.transactions.reduce((sum, item) => {
+    const rev = Number(item.totalRate || item.amount) || 0;
+    const rate = Number(item.brokerageRate) || 0;
+    return sum + (item.brokerageEarned != null ? Number(item.brokerageEarned) : (rev * rate) / 100);
+  }, 0);
+
+  const pendingBrokerage = data.transactions
+    .filter((item) => item.status !== "Completed")
+    .reduce((sum, item) => {
+      const rev = Number(item.totalRate || item.amount) || 0;
+      const rate = Number(item.brokerageRate) || 0;
+      return sum + (item.brokerageEarned != null ? Number(item.brokerageEarned) : (rev * rate) / 100);
+    }, 0);
+
   return (
     <>
       <PageHeader
         backTo="/"
         backLabel="Back to Dashboard"
         onNavigate={onNavigate}
-        eyebrow="Performance"
+        eyebrow="Performance & Earnings"
         title="Analytics"
-        description="Understand your business performance across sales, activity and dealer results."
+        description="Comprehensive finance intelligence across sales volume, brokerage earnings, dealer metrics, and settlement activity."
         action={
           <div className="analytics-header-actions">
             <div className="segmented-control period-control" role="radiogroup" aria-label="Analytics Period">
@@ -3108,56 +3389,88 @@ function Analytics({ onNavigate }) {
                   ["Metric", "Value"],
                   [
                     ["Period", period],
-                    ["Revenue", money(analytics.revenue)],
-                    ["Transactions", String(analytics.transactionsCount)],
-                    ["Brokerage / Earnings", money(analytics.earnings)],
-                    ["Payments", money(analytics.paymentsTotal)],
+                    ["Period Volume", money(analytics.revenue)],
+                    ["Deals Count", String(analytics.transactionsCount)],
+                    ["Period Brokerage / Earnings", money(analytics.earnings)],
+                    ["Period Payments Collected", money(analytics.paymentsTotal)],
+                    ["All-Time Total Volume", money(totalDealsVolume)],
+                    ["All-Time Brokerage Earned", money(totalBrokerage)],
+                    ["Pending Brokerage", money(pendingBrokerage)],
                   ],
                 )
               }
               icon={Download}
             >
-              Export report
+              Export Report
             </Button>
           </div>
         }
       />
+
       <div className="report-summary">
         <div className="stat">
-          <span className="stat-top">Total revenue ({period})</span>
+          <span className="stat-top">Volume ({period})</span>
           <strong>{money(analytics.revenue)}</strong>
         </div>
         <div className="stat">
-          <span className="stat-top">Transactions ({period})</span>
+          <span className="stat-top">Deals ({period})</span>
           <strong>{analytics.transactionsCount}</strong>
         </div>
         <div className="stat">
-          <span className="stat-top">Brokerage / Earnings</span>
-          <strong>{money(analytics.earnings)}</strong>
+          <span className="stat-top">Brokerage / Earnings ({period})</span>
+          <strong style={{ color: "var(--green)" }}>{money(analytics.earnings)}</strong>
         </div>
         <div className="stat">
-          <span className="stat-top">Payments ({period})</span>
+          <span className="stat-top">Payments Collected ({period})</span>
           <strong>{money(analytics.paymentsTotal)}</strong>
         </div>
       </div>
+
+      <div className="earnings-support" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
+        <div className="panel support-card" style={{ padding: "16px 18px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <span style={{ fontSize: "11px", color: "var(--muted)" }}>All-Time Brokerage Earned</span>
+            <strong style={{ fontFamily: "Manrope", fontSize: "20px", display: "block", marginTop: "4px" }}>{money(totalBrokerage)}</strong>
+            <small style={{ fontSize: "10px", color: "var(--muted)" }}>Across all {data.transactions.length} deals</small>
+          </div>
+          <div className="stat-icon">
+            <CircleDollarSign size={18} />
+          </div>
+        </div>
+
+        <div className="panel support-card" style={{ padding: "16px 18px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <span style={{ fontSize: "11px", color: "var(--muted)" }}>Pending Brokerage</span>
+            <strong style={{ fontFamily: "Manrope", fontSize: "20px", display: "block", marginTop: "4px", color: "var(--yellow)" }}>{money(pendingBrokerage)}</strong>
+            <small style={{ fontSize: "10px", color: "var(--muted)" }}>
+              {data.transactions.filter((item) => item.status !== "Completed").length} pending deals
+            </small>
+          </div>
+          <div className="stat-icon">
+            <Wallet size={18} />
+          </div>
+        </div>
+      </div>
+
       <div className="report-layout">
-        <Panel title={`${period} revenue trend`} className="report-panel">
+        <Panel title={`${period} Revenue Trend`} className="report-panel">
           <div className="report-card-body">
             {analytics.hasData ? (
               <DynamicBarChart chartData={analytics.chartData} yTicks={analytics.yTicks} />
             ) : (
               <div className="empty-state" style={{ minHeight: "220px" }}>
                 <Search size={20} />
-                <b>No transactions for this period</b>
-                <span>Try selecting another timeframe or create a new transaction.</span>
+                <b>No deals recorded for this period</b>
+                <span>Try selecting another timeframe or create a new deal.</span>
               </div>
             )}
           </div>
         </Panel>
-        <Panel title="Transaction activity" className="report-panel">
+
+        <Panel title="Deal Activity & Status" className="report-panel">
           <div className="report-activity-list">
             <div>
-              <span>Completed</span>
+              <span>Completed Deals</span>
               <strong>
                 {data.transactions.filter((item) => item.status === "Completed").length}
               </strong>
@@ -3165,42 +3478,33 @@ function Analytics({ onNavigate }) {
                 {data.transactions.length
                   ? Math.round((data.transactions.filter((item) => item.status === "Completed").length / data.transactions.length) * 100)
                   : 0}
-                % of all transactions
+                % of total portfolio
               </small>
             </div>
             <div>
-              <span>Pending</span>
+              <span>Pending Deals</span>
               <strong>
-                {
-                  data.transactions.filter((item) => item.status === "Pending")
-                    .length
-                }
+                {data.transactions.filter((item) => item.status === "Pending").length}
               </strong>
               <small>
                 {money(
                   data.transactions
                     .filter((item) => item.status === "Pending")
                     .reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0)
-                )}
+                )} volume
               </small>
             </div>
             <div>
-              <span>Processing</span>
+              <span>Processing Deals</span>
               <strong>
-                {
-                  data.transactions.filter(
-                    (item) => item.status === "Processing",
-                  ).length
-                }
+                {data.transactions.filter((item) => item.status === "Processing").length}
               </strong>
-              <small>Awaiting review</small>
+              <small>Awaiting settlement review</small>
             </div>
           </div>
         </Panel>
-        <Panel
-          title="Dealer performance"
-          className="report-panel full-width-panel"
-        >
+
+        <Panel title="Top Dealer Rankings" className="report-panel full-width-panel">
           <div className="dealer-rankings">
             {data.dealers.map((dealer, index) => {
               const records = data.transactions.filter(
@@ -3212,456 +3516,55 @@ function Analytics({ onNavigate }) {
                   <div className="dealer-rank-badge">#{index + 1}</div>
                   <div className="dealer-rank-copy">
                     <strong>{dealer.name}</strong>
-                    <small>{dealer.location}</small>
+                    <small>{dealer.location} • {dealerTypeLabel(dealer.type)}</small>
                   </div>
                   <div className="dealer-rank-value">
                     <b>{money(volume)}</b>
-                    <span>
-                      {records.length}{" "}
-                      transactions
-                    </span>
+                    <span>{records.length} deals</span>
                   </div>
                 </div>
               );
             })}
           </div>
         </Panel>
-      </div>
-    </>
-  );
-}
 
-function MobileDealers({ onNavigate, onAdd, onEdit, onDelete }) {
-  const { data } = useData();
-  const [query, setQuery] = useState("");
-  const list = data.dealers.filter((dealer) =>
-    `${dealer.name} ${dealer.location}`
-      .toLowerCase()
-      .includes(query.toLowerCase()),
-  );
-  const items = list.map((dealer) => {
-    const records = data.transactions.filter(
-      (item) => item.dealerId === dealer.id || item.sellerId === dealer.id,
-    );
-    const volume = records.reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0);
-    return {
-      raw: dealer,
-      id: dealer.id,
-      title: dealer.name,
-      subtitle: `${dealer.location} • ${dealerTypeLabel(dealer.type)}`,
-      meta: `${records.length} transactions`,
-      amount: money(volume),
-      status: dealer.status,
-    };
-  });
-  return (
-    <div className="mobile-dealers">
-      <PageHeader
-        backTo="/"
-        backLabel="Back to Dashboard"
-        onNavigate={onNavigate}
-        eyebrow="Manage"
-        title="Dealers"
-        description="Manage your network of diamond dealers."
-        action={
-          <Button onClick={onAdd} icon={Plus}>
-            Add dealer
-          </Button>
-        }
-      />
-      <Panel
-        title="All dealers"
-        action={
-          <SearchInput
-            value={query}
-            onChange={setQuery}
-            placeholder="Search dealers..."
-          />
-        }
-      >
-        <div className="mobile-card-list">
-          {items.map((item) => (
-            <div
-              key={item.id}
-              className="mobile-card-item"
-              onClick={() => onNavigate("/dealer-profile?id=" + item.id)}
-              role="button"
-              tabIndex={0}
-            >
-              <div className="mobile-card-main">
-                <div className="mobile-card-copy">
-                  <b>{item.title}</b>
-                  <span>{item.subtitle}</span>
-                </div>
-                <div className="mobile-card-amount">{item.amount}</div>
-              </div>
-              <div className="mobile-card-meta">
-                <span>{item.meta}</span>
-                <Status>{item.status}</Status>
-              </div>
-              <div className="mobile-card-actions" onClick={(e) => e.stopPropagation()}>
-                <button
-                  type="button"
-                  className="link-btn-subtle"
-                  onClick={() => onEdit(item.raw)}
-                >
-                  Edit
-                </button>
-                <span className="dot-sep">•</span>
-                <button
-                  type="button"
-                  className="link-btn-subtle danger"
-                  onClick={() => onDelete(item.raw)}
-                >
-                  Remove
-                </button>
-              </div>
-            </div>
-          ))}
-          {!items.length && (
-            <div className="empty-state">
-              <Search size={20} />
-              <b>No dealers found</b>
-              <span>Try adding a new dealer.</span>
-            </div>
-          )}
-        </div>
-      </Panel>
-    </div>
-  );
-}
-
-function Dealers({ onNavigate }) {
-  const { data, addDealer, updateDealer, deleteDealer } = useData();
-  const [modalDealer, setModalDealer] = useState(null);
-  const [deletingDealer, setDeletingDealer] = useState(null);
-
-  const handleSave = (dealerData) => {
-    if (modalDealer && modalDealer.id) {
-      updateDealer(modalDealer.id, dealerData);
-    } else {
-      addDealer(dealerData);
-    }
-  };
-
-  const isDeletingUsed = Boolean(
-    deletingDealer &&
-      (data.transactions.some(
-        (t) =>
-          t.dealerId === deletingDealer.id ||
-          t.sellerId === deletingDealer.id ||
-          t.buyerId === deletingDealer.id,
-      ) ||
-        data.payments.some((p) => p.dealerId === deletingDealer.id)),
-  );
-
-  const handleConfirmDelete = (id) => {
-    const res = deleteDealer(id);
-    if (res.success) {
-      setDeletingDealer(null);
-    }
-  };
-
-  return (
-    <>
-      <div className="desktop-dealers">
-        <DesktopDealers
-          onNavigate={onNavigate}
-          onAdd={() => setModalDealer({})}
-          onEdit={(d) => setModalDealer(d)}
-          onDelete={(d) => setDeletingDealer(d)}
-        />
-      </div>
-      <div className="mobile-dealers">
-        <MobileDealers
-          onNavigate={onNavigate}
-          onAdd={() => setModalDealer({})}
-          onEdit={(d) => setModalDealer(d)}
-          onDelete={(d) => setDeletingDealer(d)}
-        />
-      </div>
-
-      <DealerModal
-        open={Boolean(modalDealer)}
-        onClose={() => setModalDealer(null)}
-        dealer={modalDealer}
-        onSave={handleSave}
-      />
-
-      <DeleteDealerModal
-        dealer={deletingDealer}
-        onClose={() => setDeletingDealer(null)}
-        onConfirm={handleConfirmDelete}
-        isUsed={isDeletingUsed}
-      />
-    </>
-  );
-}
-function Payments({ onNavigate }) {
-  return (
-    <>
-      <div className="desktop-payments">
-        <DesktopPayments onNavigate={onNavigate} />
-      </div>
-      <div className="mobile-payments">
-        <MobilePayments onNavigate={onNavigate} />
-      </div>
-    </>
-  );
-}
-function MobilePayments({ onNavigate }) {
-  const { data, addPayment } = useData();
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({
-    transactionId: data.transactions[0]?.id || "",
-    amount: "",
-    method: "Bank transfer",
-  });
-  const [error, setError] = useState("");
-
-  const set = (event) =>
-    setForm((previous) => ({
-      ...previous,
-      [event.target.name]: event.target.value,
-    }));
-
-  const submit = (event) => {
-    event.preventDefault();
-    const amount = Number(form.amount.replace(/[^0-9.]/g, ""));
-    if (!form.transactionId || !amount)
-      return setError("Select a transaction and enter a valid amount.");
-    const transaction = data.transactions.find(
-      (item) => item.id === form.transactionId,
-    );
-    addPayment({
-      id: nextId("PAY", data.payments),
-      transactionId: transaction.id,
-      dealerId: transaction.dealerId,
-      date: new Date().toISOString().slice(0, 10),
-      amount,
-      method: form.method,
-      status: "Completed",
-    });
-    setOpen(false);
-    setForm((previous) => ({ ...previous, amount: "" }));
-    setError("");
-  };
-
-  const items = data.payments.map((payment) => {
-    const dealer = data.dealers.find((item) => item.id === payment.dealerId);
-    const transaction = data.transactions.find(
-      (item) => item.id === payment.transactionId,
-    );
-    return {
-      id: payment.id,
-      title: transaction?.name || payment.transactionId,
-      subtitle: dealer?.name || "Unknown dealer",
-      amount: money(payment.amount),
-      meta: payment.date,
-      status: payment.status,
-      transactionId: transaction?.id || payment.transactionId,
-    };
-  });
-  return (
-    <>
-      <PageHeader
-        backTo="/"
-        backLabel="Back to Dashboard"
-        onNavigate={onNavigate}
-        eyebrow="Finance"
-        title="Payments"
-        description="Review incoming and outgoing payments."
-        action={
-          <button
-            type="button"
-            className="button"
-            onClick={() => setOpen(true)}
-          >
-            <Plus size={16} />
-            Add payment
-          </button>
-        }
-      />
-      {open && (
-        <form className="payment-form panel" onSubmit={submit} style={{ marginBottom: "16px" }}>
-          <div className="panel-head">
-            <h2>Add payment</h2>
-            <button
-              type="button"
-              className="icon-btn"
-              onClick={() => setOpen(false)}
-            >
-              <X size={17} />
-            </button>
+        <Panel title="Deals & Earnings Breakdown" className="report-panel full-width-panel">
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Deal ID</th>
+                  <th>Deal Name</th>
+                  <th>Dealer</th>
+                  <th>Date</th>
+                  <th>Deal Volume</th>
+                  <th>Brokerage Rate</th>
+                  <th>Earned Brokerage</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.transactions.slice(0, 10).map((item) => {
+                  const dealer = data.dealers.find((entry) => entry.id === (item.dealerId || item.sellerId));
+                  const rev = Number(item.totalRate || item.amount) || 0;
+                  const rate = Number(item.brokerageRate) || 0;
+                  const earned = item.brokerageEarned != null ? Number(item.brokerageEarned) : (rev * rate) / 100;
+                  return (
+                    <tr key={item.id}>
+                      <td><b>{item.id}</b></td>
+                      <td>{item.name}</td>
+                      <td>{dealer?.name || "Dealer not linked"}</td>
+                      <td>{item.date}</td>
+                      <td><b>{money(rev)}</b></td>
+                      <td>{rate}%</td>
+                      <td style={{ color: "var(--green)", fontWeight: 600 }}>{money(earned)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-          <div className="form-grid">
-            <label>
-              Transaction
-              <select
-                name="transactionId"
-                value={form.transactionId}
-                onChange={set}
-              >
-                {data.transactions.map((item) => (
-                  <option key={item.id}>{item.id}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Amount
-              <input
-                name="amount"
-                value={form.amount}
-                onChange={(event) =>
-                  setForm((previous) => ({
-                    ...previous,
-                    amount: event.target.value
-                      .replace(/[^0-9.]/g, "")
-                      .replace(/(\..*)\./g, "$1"),
-                  }))
-                }
-                inputMode="decimal"
-                pattern="[0-9.]*"
-                placeholder={"\u20b9 0.00"}
-              />
-            </label>
-            <label>
-              Payment method
-              <select name="method" value={form.method} onChange={set}>
-                <option>Bank transfer</option>
-                <option>Cash</option>
-                <option>Credit card</option>
-              </select>
-            </label>
-          </div>
-          {error && (
-            <div className="form-error" role="alert">
-              {error}
-            </div>
-          )}
-          <div className="form-actions">
-            <Button
-              secondary
-              type="button"
-              onClick={() => setOpen(false)}
-              icon={null}
-            >
-              Cancel
-            </Button>
-            <Button type="submit">Add payment</Button>
-          </div>
-        </form>
-      )}
-      <Panel title="Payment history">
-        <div className="mobile-card-list">
-          {items.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className="mobile-card-item"
-              onClick={() =>
-                onNavigate("/transaction-details?id=" + item.transactionId)
-              }
-            >
-              <div className="mobile-card-main">
-                <div className="mobile-card-copy">
-                  <b>{item.title}</b>
-                  <span>{item.subtitle}</span>
-                </div>
-                <div className="mobile-card-amount">{item.amount}</div>
-              </div>
-              <div className="mobile-card-meta">
-                <span>{item.meta}</span>
-                <Status>{item.status}</Status>
-              </div>
-            </button>
-          ))}
-        </div>
-      </Panel>
-    </>
-  );
-}
-function Earnings({ onNavigate }) {
-  return (
-    <>
-      <div className="desktop-earnings">
-        <DesktopEarnings onNavigate={onNavigate} />
+        </Panel>
       </div>
-      <div className="mobile-earnings">
-        <MobileEarnings onNavigate={onNavigate} />
-      </div>
-    </>
-  );
-}
-function MobileEarnings({ onNavigate }) {
-  const { data } = useData();
-  const total = data.transactions.reduce(
-    (sum, item) => sum + (item.amount * item.brokerageRate) / 100,
-    0,
-  );
-  const pending = data.transactions
-    .filter((item) => item.status !== "Completed")
-    .reduce((sum, item) => sum + (item.amount * item.brokerageRate) / 100, 0);
-  const items = data.transactions.map((item) => {
-    const dealer = data.dealers.find((entry) => entry.id === item.dealerId);
-    return {
-      id: item.id,
-      title: dealer?.name || "Unknown dealer",
-      amount: money((item.amount * item.brokerageRate) / 100),
-    };
-  });
-  return (
-    <>
-      <PageHeader
-        backTo="/"
-        backLabel="Back to Dashboard"
-        onNavigate={onNavigate}
-        eyebrow="Finance"
-        title="Earnings overview"
-        description="Track your brokerage income and performance."
-      />
-      <div className="earnings-support">
-        <div className="panel support-card">
-          <div>
-            <span>Total earnings</span>
-            <strong>{money(total)}</strong>
-          </div>
-          <div className="stat-icon">
-            <CircleDollarSign size={17} />
-          </div>
-        </div>
-        <div className="panel support-card">
-          <div>
-            <span>Pending earnings</span>
-            <strong>{money(pending)}</strong>
-            <small>
-              {
-                data.transactions.filter((item) => item.status !== "Completed")
-                  .length
-              }{" "}
-              pending transactions
-            </small>
-          </div>
-          <div className="stat-icon">
-            <Wallet size={17} />
-          </div>
-        </div>
-      </div>
-      <Panel title="Earnings trend" className="revenue-panel">
-        <MiniChart />
-      </Panel>
-      <Panel title="Earnings breakdown">
-        <div className="mobile-card-list simple-list">
-          {items.map((item) => (
-            <div key={item.id} className="mobile-card-item simple-item">
-              <div className="mobile-card-copy">
-                <b>{item.title}</b>
-              </div>
-              <div className="mobile-card-amount">{item.amount}</div>
-            </div>
-          ))}
-        </div>
-      </Panel>
     </>
   );
 }
@@ -3688,21 +3591,35 @@ function Bookkeeping({ onNavigate }) {
   const visibleEntries = entries.filter((entry) => filter === "All" || entry.entryType === filter);
   const totalIncome = visibleEntries.filter((entry) => entry.entryType === "Income").reduce((sum, entry) => sum + entry.amount, 0);
   const totalExpenses = visibleEntries.filter((entry) => entry.entryType === "Expense").reduce((sum, entry) => sum + entry.amount, 0);
+
   const resetForm = () => {
-    setForm({ entryType: "Expense", date: new Date().toISOString().slice(0, 10), category: "Dealer Payment", dealerId: "", transactionId: "", description: "", amount: "", paymentMethod: "Bank Transfer", notes: "" });
+    setForm({
+      entryType: "Expense",
+      date: new Date().toISOString().slice(0, 10),
+      category: "Dealer Payment",
+      dealerId: "",
+      transactionId: "",
+      description: "",
+      amount: "",
+      paymentMethod: "Bank Transfer",
+      notes: "",
+    });
     setEditing(null);
     setFormOpen(false);
     setError("");
   };
+
   const openEdit = (entry) => {
     setEditing(entry);
     setForm({ ...entry, amount: String(entry.amount) });
     setFormOpen(true);
     setError("");
   };
+
   const categories = form.entryType === "Income"
     ? ["Diamond Sale", "Brokerage Income", "Dealer Payment Received", "Advance Received", "Other Income"]
     : ["Diamond Purchase", "Dealer Payment", "Brokerage Expense", "Office Expense", "Salary", "Rent", "Utilities", "Bank Charges", "Travel", "Other Expense"];
+
   const changeEntryType = (event) => {
     const entryType = event.target.value;
     setForm((previous) => ({
@@ -3711,6 +3628,7 @@ function Bookkeeping({ onNavigate }) {
       category: entryType === "Income" ? "Diamond Sale" : "Dealer Payment",
     }));
   };
+
   const submit = async (event) => {
     event.preventDefault();
     setError("");
@@ -3736,15 +3654,18 @@ function Bookkeeping({ onNavigate }) {
       setError(err?.message || "Unable to save bookkeeping entry. Please try again.");
     }
   };
+
   const remove = async (entry) => {
-    if (!window.confirm(`Delete ${entry.description}?`)) return;
+    if (!window.confirm(`Delete "${entry.description}"?`)) return;
     try {
       await deleteBookkeepingEntry(entry.id);
     } catch (err) {
       setError(err?.message || "Unable to delete bookkeeping entry. Please try again.");
     }
   };
-  const setField = (event) => setForm((previous) => ({ ...previous, [event.target.name]: event.target.value }));
+
+  const setField = (event) =>
+    setForm((previous) => ({ ...previous, [event.target.name]: event.target.value }));
 
   useEffect(() => {
     if (!formOpen || typeof window === "undefined" || !window.matchMedia("(max-width: 767px)").matches) return undefined;
@@ -3763,7 +3684,7 @@ function Bookkeeping({ onNavigate }) {
         onNavigate={onNavigate}
         eyebrow="Finance"
         title="Bookkeeping"
-        description="Keep a simple record of money coming in and going out."
+        description="Keep a simple record of business money coming in and going out."
         action={<Button onClick={() => { resetForm(); setFormOpen(true); }}>Add Entry</Button>}
       />
       <div className="bookkeeping-summary">
@@ -3773,20 +3694,24 @@ function Bookkeeping({ onNavigate }) {
       </div>
       {formOpen && (
         <form className="panel bookkeeping-form" onSubmit={submit}>
-          <div className="panel-head bookkeeping-form-head"><button type="button" className="bookkeeping-back" onClick={resetForm}><ChevronLeft size={16} /> Back</button><h2>{editing ? "Edit bookkeeping entry" : "Add bookkeeping entry"}</h2><button type="button" className="icon-btn bookkeeping-close" onClick={resetForm} aria-label="Close entry form"><X size={17} /></button></div>
+          <div className="panel-head bookkeeping-form-head">
+            <button type="button" className="bookkeeping-back" onClick={resetForm}><ChevronLeft size={16} /> Back</button>
+            <h2>{editing ? "Edit bookkeeping entry" : "Add bookkeeping entry"}</h2>
+            <button type="button" className="icon-btn bookkeeping-close" onClick={resetForm} aria-label="Close entry form"><X size={17} /></button>
+          </div>
           <div className="form-grid">
             <label className="field-group"><span className="field-title">Entry Type</span><select name="entryType" value={form.entryType} onChange={changeEntryType}><option>Income</option><option>Expense</option></select></label>
             <label className="field-group"><span className="field-title">Date</span><input name="date" type="date" value={form.date} onChange={setField} required /></label>
             <label className="field-group"><span className="field-title">Category</span><select name="category" value={form.category} onChange={setField} required>{categories.map((category) => <option key={category}>{category}</option>)}</select></label>
             <label className="field-group"><span className="field-title">Amount</span><div className="input-with-symbol"><span className="input-symbol">₹</span><input name="amount" inputMode="decimal" value={form.amount} onChange={(event) => { const raw = event.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1"); setForm((previous) => ({ ...previous, amount: raw ? formatIndianNumber(raw) : "" })); }} required /></div></label>
             <label className="field-group"><span className="field-title">Dealer / Party</span><select name="dealerId" value={form.dealerId} onChange={setField}><option value="">None / Not linked</option>{data.dealers.map((dealer) => <option key={dealer.id} value={dealer.id}>{dealer.name}</option>)}</select></label>
-            <label className="field-group"><span className="field-title">Transaction</span><select name="transactionId" value={form.transactionId} onChange={setField}><option value="">None / Not linked</option>{data.transactions.map((transaction) => { const dealer = data.dealers.find((item) => item.id === (transaction.dealerId || transaction.sellerId)); return <option key={transaction.id} value={transaction.id}>{transaction.name}{dealer ? ` - ${dealer.name}` : ""}</option>; })}</select></label>
+            <label className="field-group"><span className="field-title">Deal</span><select name="transactionId" value={form.transactionId} onChange={setField}><option value="">None / Not linked</option>{data.transactions.map((transaction) => { const dealer = data.dealers.find((item) => item.id === (transaction.dealerId || transaction.sellerId)); return <option key={transaction.id} value={transaction.id}>{transaction.name}{dealer ? ` - ${dealer.name}` : ""}</option>; })}</select></label>
             <label className="field-group"><span className="field-title">Description</span><input name="description" value={form.description} onChange={setField} required /></label>
             <label className="field-group"><span className="field-title">Payment Method</span><select name="paymentMethod" value={form.paymentMethod} onChange={setField}><option>Bank Transfer</option><option>UPI</option><option>Cash</option><option>Cheque</option><option>Other</option></select></label>
             <label className="field-group full"><span className="field-title">Reference / Notes</span><textarea name="notes" value={form.notes} onChange={setField} /></label>
           </div>
           {error && <div className="form-error" role="alert">{error}</div>}
-          <div className="form-actions"><Button secondary type="button" onClick={resetForm}>Cancel</Button><Button type="submit">{editing ? "Save Entry" : "Save Entry"}</Button></div>
+          <div className="form-actions"><Button secondary type="button" onClick={resetForm}>Cancel</Button><Button type="submit">Save Entry</Button></div>
         </form>
       )}
       {!formOpen && error && <div className="form-error" role="alert">{error}</div>}
@@ -3810,14 +3735,14 @@ function ProfilePage({ onNavigate }) {
   const [saving, setSaving] = useState(false);
   const [savedNotice, setSavedNotice] = useState(false);
   const [error, setError] = useState("");
-  const displayName = profile?.full_name || user?.email || "Not available";
-  const initials = (profile?.full_name || user?.email || "?")
+  const displayName = profile?.full_name || user?.email || "User";
+  const initials = (profile?.full_name || user?.email || "U")
     .split(/\s+|@/)
     .filter(Boolean)
     .map((part) => part[0])
     .join("")
     .slice(0, 2)
-    .toUpperCase();
+    .toUpperCase() || "U";
 
   useEffect(() => {
     setFullName(profile?.full_name || "");
@@ -3880,12 +3805,8 @@ function ProfilePage({ onNavigate }) {
               <input value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Your name" />
             </label>
             <label className="settings-field">
-              <span>Business email</span>
+              <span>Email address</span>
               <input value={user?.email || "Not available"} readOnly />
-            </label>
-            <label className="settings-field">
-              <span>Role</span>
-              <input value={profile?.role === "super_admin" ? "Super Admin" : profile?.role === "staff" ? "Staff" : "Not available"} readOnly />
             </label>
             <div className="profile-form-actions">
               <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Save changes"}</Button>
@@ -3896,7 +3817,7 @@ function ProfilePage({ onNavigate }) {
           <div className="settings-section-head"><h2>Account</h2></div>
           <div className="settings-field-grid">
             <div className="settings-field"><span>Account email</span><strong>{user?.email || "Not available"}</strong></div>
-            <div className="settings-field"><span>Account status</span><strong>{profile?.status || "Not available"}</strong></div>
+            <div className="settings-field"><span>Account status</span><strong>{profile?.status || "active"}</strong></div>
           </div>
         </section>
       </div>
@@ -3982,7 +3903,7 @@ function SettingsPage({ onNavigate }) {
                 <option value="INR">INR - Indian Rupee</option>
                 <option value="USD">USD - US Dollar</option>
               </select>
-              <small>Used for all new transactions.</small>
+              <small>Used for all new deals.</small>
             </label>
             <label className="settings-field full-width-field">
               <span>Business address</span>
@@ -4000,16 +3921,14 @@ function SettingsPage({ onNavigate }) {
             <label className="settings-toggle">
               <div>
                 <span>Payment reminders</span>
-                <small>Notify me when a payment or payout is pending.</small>
+                <small>Notify when a payment or payout is pending.</small>
               </div>
               <input name="paymentReminders" type="checkbox" checked={Boolean(settings.paymentReminders)} onChange={setField} />
             </label>
             <label className="settings-toggle">
               <div>
-                <span>Transaction alerts</span>
-                <small>
-                  Alert me when new activity is added to the workspace.
-                </small>
+                <span>Deal alerts</span>
+                <small>Alert when new deal activity is recorded.</small>
               </div>
               <input name="transactionAlerts" type="checkbox" checked={Boolean(settings.transactionAlerts)} onChange={setField} />
             </label>
@@ -4032,9 +3951,9 @@ function SettingsPage({ onNavigate }) {
             <label className="settings-field">
               <span>Default view</span>
               <select name="defaultView" value={settings.defaultView || "Dashboard"} onChange={setField}>
-                <option>Dashboard</option>
-                <option>Transactions</option>
-                <option>Reports</option>
+                <option value="Dashboard">Dashboard</option>
+                <option value="Deals">Deals</option>
+                <option value="Analytics">Analytics</option>
               </select>
               <small>Opened after login for the workspace.</small>
             </label>
@@ -4197,7 +4116,7 @@ function LoginPage({ onLoginSuccess }) {
           </h1>
           <p>
             {mode === "login"
-              ? "Enter your authorized credentials to access your finance workspace."
+              ? "Enter your credentials to access your finance workspace."
               : mode === "forgot"
               ? "Enter your account email to receive a secure password reset link."
               : "Create a secure new password for your account."}
@@ -4400,504 +4319,10 @@ function LoginPage({ onLoginSuccess }) {
 
         <div className="login-security-note">
           <Lock size={12} />
-          <span>Authorized access only • Protected by Supabase Row Level Security</span>
+          <span>Protected finance workspace • Diamond Finance</span>
         </div>
       </div>
     </div>
-  );
-}
-
-function SuperAdminPage({ onNavigate }) {
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [modal, setModal] = useState(null); // 'add' | 'edit' | 'confirm_disable'
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [formData, setFormData] = useState({ fullName: "", email: "", temporaryPassword: "", status: "active" });
-  const [actionLoading, setActionLoading] = useState(false);
-  const [formError, setFormError] = useState("");
-  const [bannerNotice, setBannerNotice] = useState("");
-
-  const loadUsers = async () => {
-    setLoading(true);
-    try {
-      const data = await fetchProfiles();
-      setUsers(data || []);
-    } catch (e) {
-      console.warn("Failed to load users:", e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadUsers();
-  }, []);
-
-  const handleOpenAdd = () => {
-    setFormData({ fullName: "", email: "", temporaryPassword: "", status: "active" });
-    setFormError("");
-    setModal("add");
-  };
-
-  const handleOpenEdit = (user) => {
-    setSelectedUser(user);
-    setFormData({ fullName: user.full_name || "", email: user.email || "", temporaryPassword: "", status: user.status || "active" });
-    setFormError("");
-    setModal("edit");
-  };
-
-  const handleOpenDisable = (user) => {
-    setSelectedUser(user);
-    setModal("confirm_disable");
-  };
-
-  const handleCreateUser = async (e) => {
-    e.preventDefault();
-    if (actionLoading) return;
-    setFormError("");
-
-    if (!formData.fullName.trim() || !formData.email.trim() || !formData.temporaryPassword.trim()) {
-      setFormError("All fields are required.");
-      return;
-    }
-
-    if (formData.temporaryPassword.length < 6) {
-      setFormError("Temporary password must be at least 6 characters.");
-      return;
-    }
-
-    setActionLoading(true);
-    try {
-      await createAuthorizedUser({
-        fullName: formData.fullName.trim(),
-        email: formData.email.trim(),
-        temporaryPassword: formData.temporaryPassword,
-        role: "staff",
-      });
-      setModal(null);
-      setBannerNotice(`User "${formData.fullName.trim()}" created successfully as Staff.`);
-      setTimeout(() => setBannerNotice(""), 4000);
-      await loadUsers();
-    } catch (err) {
-      setFormError(err?.message || "Failed to create user.");
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleUpdateUser = async (e) => {
-    e.preventDefault();
-    if (actionLoading || !selectedUser) return;
-    setFormError("");
-
-    if (!formData.fullName.trim()) {
-      setFormError("Name cannot be empty.");
-      return;
-    }
-
-    setActionLoading(true);
-    try {
-      await updateProfile(selectedUser.id, {
-        full_name: formData.fullName.trim(),
-        status: formData.status,
-      });
-      setModal(null);
-      setBannerNotice("User updated successfully.");
-      setTimeout(() => setBannerNotice(""), 4000);
-      await loadUsers();
-    } catch (err) {
-      setFormError(err?.message || "Failed to update user.");
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleToggleStatus = async (user) => {
-    if (user.role === "super_admin") return;
-    setActionLoading(true);
-    try {
-      await toggleUserStatus(user.id, user.status);
-      setModal(null);
-      setBannerNotice(`Account status updated for ${user.email}.`);
-      setTimeout(() => setBannerNotice(""), 4000);
-      await loadUsers();
-    } catch (err) {
-      console.warn("Failed to toggle status:", err);
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const filteredUsers = users.filter((u) => {
-    const q = search.toLowerCase();
-    return (
-      (u.full_name || "").toLowerCase().includes(q) ||
-      (u.email || "").toLowerCase().includes(q) ||
-      (u.role || "").toLowerCase().includes(q)
-    );
-  });
-
-  const totalUsers = users.length;
-  const activeStaff = users.filter((u) => u.role === "staff" && u.status === "active").length;
-  const disabledCount = users.filter((u) => u.status === "disabled").length;
-  const superAdminCount = users.filter((u) => u.role === "super_admin").length;
-
-  return (
-    <>
-      <PageHeader
-        eyebrow="ADMINISTRATION"
-        title="Super Admin"
-        description="Manage authorized Diamond Finance users and access permissions."
-        action={
-          <button className="button" onClick={handleOpenAdd}>
-            <UserPlus size={16} />
-            <span>Add User</span>
-          </button>
-        }
-      />
-
-      {bannerNotice && (
-        <div className="notice" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <CheckCircle2 size={16} color="var(--green)" />
-          <span>{bannerNotice}</span>
-        </div>
-      )}
-
-      <div className="stats-grid">
-        <div className="stat">
-          <div className="stat-top">
-            <span>Total Accounts</span>
-            <div className="stat-icon"><Users size={16} /></div>
-          </div>
-          <strong>{totalUsers}</strong>
-          <small>Authorized users</small>
-        </div>
-        <div className="stat">
-          <div className="stat-top">
-            <span>Active Staff</span>
-            <div className="stat-icon" style={{ background: "var(--green-soft)", color: "var(--green)" }}><UserCheck size={16} /></div>
-          </div>
-          <strong>{activeStaff}</strong>
-          <small className="up">Operational access</small>
-        </div>
-        <div className="stat">
-          <div className="stat-top">
-            <span>Disabled</span>
-            <div className="stat-icon" style={{ background: "#fee2e2", color: "#dc2626" }}><UserX size={16} /></div>
-          </div>
-          <strong>{disabledCount}</strong>
-          <small className="down">Blocked access</small>
-        </div>
-        <div className="stat">
-          <div className="stat-top">
-            <span>Super Admin</span>
-            <div className="stat-icon" style={{ background: "#f5f3ff", color: "#7c3aed" }}><ShieldCheck size={16} /></div>
-          </div>
-          <strong>{superAdminCount}</strong>
-          <small>Designated account</small>
-        </div>
-      </div>
-
-      <div className="panel">
-        <div className="panel-head">
-          <h2>Authorized Users ({filteredUsers.length})</h2>
-          <div className="panel-actions">
-            <div className="search">
-              <Search size={14} />
-              <input
-                type="text"
-                placeholder="Search by name or email..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>User</th>
-                <th>Role</th>
-                <th>Status</th>
-                <th>Added Date</th>
-                <th style={{ textAlign: "right" }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredUsers.length === 0 ? (
-                <tr>
-                  <td colSpan={5}>
-                    <div className="empty-state">
-                      <b>No users found</b>
-                      <span>Try adjusting your search criteria.</span>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                filteredUsers.map((u) => {
-                  const isSuper = u.role === "super_admin";
-                  const isDisabled = u.status === "disabled";
-                  const formattedDate = u.created_at
-                    ? new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-                    : "—";
-
-                  return (
-                    <tr key={u.id}>
-                      <td>
-                        <div className="table-person">
-                          <div className="avatar" style={isSuper ? { background: "#6d28d9" } : {}}>
-                            {(u.full_name || u.email || "U").slice(0, 2).toUpperCase()}
-                          </div>
-                          <div>
-                            <b>{u.full_name || u.email?.split("@")[0] || "Your name"}</b>
-                            <span className="table-id">{u.email}</span>
-                          </div>
-                        </div>
-                      </td>
-                      <td>
-                        <span className={`admin-badge ${isSuper ? "super-admin" : "staff"}`}>
-                          {isSuper ? "Super Admin" : "Staff"}
-                        </span>
-                      </td>
-                      <td>
-                        <span className={`status-pill ${isDisabled ? "disabled" : "active"}`}>
-                          <i />
-                          {isDisabled ? "Disabled" : "Active"}
-                        </span>
-                      </td>
-                      <td>
-                        <span>{formattedDate}</span>
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        {isSuper ? (
-                          <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: 600, fontStyle: "italic" }}>
-                            Primary Admin (Protected)
-                          </span>
-                        ) : (
-                          <div className="admin-actions-cell" style={{ justifyContent: "flex-end" }}>
-                            <button
-                              type="button"
-                              className="admin-action-btn"
-                              onClick={() => handleOpenEdit(u)}
-                            >
-                              <Pencil size={12} />
-                              <span>Edit</span>
-                            </button>
-                            {isDisabled ? (
-                              <button
-                                type="button"
-                                className="admin-action-btn success"
-                                onClick={() => handleToggleStatus(u)}
-                                disabled={actionLoading}
-                              >
-                                <UserCheck size={12} />
-                                <span>Enable</span>
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                className="admin-action-btn danger"
-                                onClick={() => handleOpenDisable(u)}
-                                disabled={actionLoading}
-                              >
-                                <UserX size={12} />
-                                <span>Disable</span>
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Add User Modal */}
-      {modal === "add" && (
-        <div className="modal-backdrop" onClick={() => setModal(null)}>
-          <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="admin-modal-head">
-              <h3>Add Authorized User</h3>
-              <button className="icon-btn" onClick={() => setModal(null)}>
-                <X size={18} />
-              </button>
-            </div>
-            <form onSubmit={handleCreateUser}>
-              <div className="admin-modal-body">
-                {formError && (
-                  <div className="login-error-banner">
-                    <AlertCircle size={15} />
-                    <span>{formError}</span>
-                  </div>
-                )}
-                <label>
-                  <span>Full Name</span>
-                  <input
-                    type="text"
-                    placeholder="e.g. Alex Morgan"
-                    value={formData.fullName}
-                    onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                    required
-                  />
-                </label>
-                <label>
-                  <span>Email Address</span>
-                  <input
-                    type="email"
-                    placeholder="e.g. alex@diamondfinance.com"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    required
-                  />
-                </label>
-                <label>
-                  <span>Temporary Password</span>
-                  <input
-                    type="password"
-                    placeholder="Minimum 6 characters"
-                    value={formData.temporaryPassword}
-                    onChange={(e) => setFormData({ ...formData, temporaryPassword: e.target.value })}
-                    required
-                  />
-                  <small>The user can sign in with this temporary password.</small>
-                </label>
-                <label>
-                  <span>Role</span>
-                  <select disabled value="staff">
-                    <option value="staff">Staff (Standard Workspace Access)</option>
-                  </select>
-                  <small>Only one Super Admin account exists for the workspace.</small>
-                </label>
-              </div>
-              <div className="admin-modal-actions">
-                <button
-                  type="button"
-                  className="button secondary"
-                  onClick={() => setModal(null)}
-                  disabled={actionLoading}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="button" disabled={actionLoading}>
-                  {actionLoading ? "Creating User..." : "Create User"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Edit User Modal */}
-      {modal === "edit" && selectedUser && (
-        <div className="modal-backdrop" onClick={() => setModal(null)}>
-          <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="admin-modal-head">
-              <h3>Edit User — {selectedUser.email}</h3>
-              <button className="icon-btn" onClick={() => setModal(null)}>
-                <X size={18} />
-              </button>
-            </div>
-            <form onSubmit={handleUpdateUser}>
-              <div className="admin-modal-body">
-                {formError && (
-                  <div className="login-error-banner">
-                    <AlertCircle size={15} />
-                    <span>{formError}</span>
-                  </div>
-                )}
-                <label>
-                  <span>Full Name</span>
-                  <input
-                    type="text"
-                    value={formData.fullName}
-                    onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                    required
-                  />
-                </label>
-                <label>
-                  <span>Email (Account ID)</span>
-                  <input type="email" value={selectedUser.email} disabled />
-                  <small>Email address is managed in Supabase Auth.</small>
-                </label>
-                <label>
-                  <span>Account Status</span>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                  >
-                    <option value="active">Active (Can log in)</option>
-                    <option value="disabled">Disabled (Login blocked)</option>
-                  </select>
-                </label>
-              </div>
-              <div className="admin-modal-actions">
-                <button
-                  type="button"
-                  className="button secondary"
-                  onClick={() => setModal(null)}
-                  disabled={actionLoading}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="button" disabled={actionLoading}>
-                  {actionLoading ? "Saving..." : "Save Changes"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Disable Confirmation Modal */}
-      {modal === "confirm_disable" && selectedUser && (
-        <div className="modal-backdrop" onClick={() => setModal(null)}>
-          <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="admin-modal-head">
-              <h3>Disable Staff Account</h3>
-              <button className="icon-btn" onClick={() => setModal(null)}>
-                <X size={18} />
-              </button>
-            </div>
-            <div className="admin-modal-body">
-              <div className="delete-warning-box">
-                Are you sure you want to disable <strong>{selectedUser.full_name || selectedUser.email}</strong>?
-                <br />
-                <span style={{ fontSize: "11.5px", marginTop: "6px", display: "inline-block" }}>
-                  This user will be immediately blocked from signing in and accessing Diamond Finance.
-                  Their historical transactions, payments, and dealer records will remain intact.
-                </span>
-              </div>
-            </div>
-            <div className="admin-modal-actions">
-              <button
-                type="button"
-                className="button secondary"
-                onClick={() => setModal(null)}
-                disabled={actionLoading}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="button"
-                style={{ background: "#dc2626" }}
-                onClick={() => handleToggleStatus(selectedUser)}
-                disabled={actionLoading}
-              >
-                {actionLoading ? "Disabling..." : "Confirm Disable"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
   );
 }
 

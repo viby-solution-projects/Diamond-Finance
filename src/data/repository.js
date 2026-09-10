@@ -219,6 +219,7 @@ export function supabaseRepository() {
         amount: Number(p.amount) || 0,
         method: p.method || 'Bank transfer',
         status: p.status || 'Completed',
+        notes: p.notes || '',
       });
 
       return {
@@ -374,6 +375,7 @@ export function supabaseRepository() {
         amount: payment.amount,
         method: payment.method,
         status: payment.status,
+        notes: payment.notes || '',
       });
       if (error) {
         console.error('Supabase insertPayment error:', error);

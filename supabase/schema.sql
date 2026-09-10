@@ -108,8 +108,11 @@ CREATE TABLE IF NOT EXISTS public.payments (
     amount NUMERIC(14, 2) NOT NULL DEFAULT 0,
     method TEXT NOT NULL DEFAULT 'Bank transfer',
     status TEXT NOT NULL DEFAULT 'Completed' CHECK (status IN ('Completed', 'Pending')),
+    notes TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+ALTER TABLE public.payments ADD COLUMN IF NOT EXISTS notes TEXT;
 
 -- 5. Create user-owned bookkeeping entries
 CREATE TABLE IF NOT EXISTS public.bookkeeping_entries (
