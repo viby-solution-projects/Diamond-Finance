@@ -2601,7 +2601,6 @@ function EditDealModal({ open, onClose, transaction, onSave }) {
           <div className="modal-body">
             {error && <div className="login-error-banner">{error}</div>}
             <div className="form-grid deal-form-grid" style={{ padding: 0 }}>
-              <div className="deal-form-section-title">Deal information</div>
               <label className="field-group">
                 <span className="field-title">Deal Name</span>
                 <input
@@ -3006,7 +3005,6 @@ function NewDeal({ onNavigate }) {
       <form className="grouped-form deal-form-shell" onSubmit={submit}>
         <Panel title="Deal information" className="form-panel new-deal-panel">
           <div className="form-grid deal-form-grid">
-            <div className="deal-form-section-title">Deal information</div>
             <label className="field-group">
               <span className="field-title">Deal Name</span>
               <input
