@@ -20,7 +20,6 @@ import {
   X,
   ArrowUpRight,
   ArrowDownRight,
-  MoreHorizontal,
   Download,
   Check,
   CalendarDays,
@@ -436,9 +435,6 @@ function App() {
           onNavigate={go}
           open={drawer}
           onClose={() => setDrawer(false)}
-          userName={userName}
-          userEmail={userEmail}
-          userInitials={userInitials}
           role={profile?.role || "staff"}
         />
         <main className="main-area">
@@ -526,9 +522,10 @@ function App() {
                     </button>
                   )}
                   <button onClick={() => go("/settings")}>
-                    Account settings
+                    Account / Profile
                   </button>
-                  <button onClick={handleLogout}>Sign out</button>
+                  <button onClick={() => go("/settings")}>Settings</button>
+                  <button onClick={handleLogout}>Log out</button>
                 </div>
               )}
             </div>
@@ -562,7 +559,7 @@ function App() {
   );
 }
 
-function Sidebar({ current, onNavigate, open, onClose, userName = "Your name", userEmail = "", userInitials = "YN", role = "staff" }) {
+function Sidebar({ current, onNavigate, open, onClose, role = "staff" }) {
   return (
     <>
       {open && <div className="scrim" onClick={onClose} />}
@@ -636,18 +633,6 @@ function Sidebar({ current, onNavigate, open, onClose, userName = "Your name", u
             </>
           )}
         </nav>
-        <div className="sidebar-bottom">
-          <div className="user-row">
-            <div className="avatar" style={role === "super_admin" ? { background: "#6d28d9" } : {}}>
-              {userInitials}
-            </div>
-            <div>
-              <b>{userName}</b>
-              <small>{userEmail}</small>
-            </div>
-            <MoreHorizontal size={18} />
-          </div>
-        </div>
       </aside>
     </>
   );
