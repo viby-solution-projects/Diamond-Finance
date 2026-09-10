@@ -1025,6 +1025,208 @@ td b {
   grid-column: 1 / -1;
 }
 
+/* New Deal and Edit Deal share a deliberate finance form grid. */
+.deal-form-shell {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.new-deal-panel {
+  max-width: none;
+}
+
+.deal-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-areas:
+    "info info"
+    "name date"
+    "carat rate"
+    "total terms"
+    "due cvd"
+    "sell seller"
+    "buyer brokerage"
+    "earned status"
+    "payment payment"
+    "notes notes";
+  align-items: start;
+  column-gap: 28px;
+  row-gap: 18px;
+  padding: 24px 28px;
+}
+
+.deal-form-grid > :nth-child(1) { grid-area: info; }
+.deal-form-grid > :nth-child(2) { grid-area: name; }
+.deal-form-grid > :nth-child(3) { grid-area: date; }
+.deal-form-grid > :nth-child(4) { grid-area: carat; }
+.deal-form-grid > :nth-child(5) { grid-area: rate; }
+.deal-form-grid > :nth-child(6) { grid-area: total; }
+.deal-form-grid > :nth-child(7) { grid-area: terms; }
+.deal-form-grid > :nth-child(8) { grid-area: due; }
+.deal-form-grid > :nth-child(9) { grid-area: cvd; }
+.deal-form-grid > :nth-child(10) { grid-area: sell; }
+.deal-form-grid > :nth-child(11) { grid-area: seller; }
+.deal-form-grid > :nth-child(12) { grid-area: buyer; }
+.deal-form-grid > :nth-child(13) { grid-area: brokerage; }
+.deal-form-grid > :nth-child(14) { grid-area: earned; }
+.deal-form-grid > :nth-child(15) { grid-area: status; }
+.deal-form-grid > :nth-child(16) { grid-area: payment; }
+.deal-form-grid > :nth-child(17) { grid-area: notes; }
+
+.deal-form-section-title {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.3;
+  text-transform: uppercase;
+  padding-top: 4px;
+  border-bottom: 1px solid var(--line-subtle);
+  padding-bottom: 8px;
+}
+
+.deal-form-grid .field-group {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.deal-form-grid .field-title,
+.deal-form-grid .earned-field > span {
+  display: block;
+  margin: 0;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.deal-form-grid input,
+.deal-form-grid select,
+.deal-form-grid textarea {
+  margin: 0;
+  min-width: 0;
+  min-height: 44px;
+  height: 44px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.deal-form-grid textarea {
+  height: 88px;
+  padding: 11px 12px;
+}
+
+.deal-form-grid .input-with-symbol {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--input-bg);
+}
+
+.deal-form-grid .input-with-symbol:focus-within {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px var(--blue-soft);
+}
+
+.deal-form-grid .input-symbol {
+  display: grid;
+  place-items: center;
+  flex: 0 0 38px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  background: var(--line-subtle);
+  border-right: 1px solid var(--line);
+}
+
+.deal-form-grid .input-with-symbol input {
+  flex: 1 1 auto;
+  width: 0;
+  height: 42px;
+  min-height: 42px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.deal-form-grid .segmented-control {
+  width: 100%;
+  min-height: 44px;
+}
+
+.deal-form-grid .segmented-btn {
+  min-height: 36px;
+}
+
+.calculated-cell,
+.earned-field {
+  min-width: 0;
+  min-height: 80px;
+}
+
+.calculated-field-card,
+.earned-field {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  min-height: 80px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--line-subtle);
+}
+
+.calc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.calc-badge {
+  color: var(--blue);
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.calc-value,
+.earned-field strong {
+  display: block;
+  color: var(--ink);
+  font-family: Manrope, sans-serif;
+  font-size: 19px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.calc-formula,
+.earned-field::after {
+  display: block;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.3;
+}
+
+.earned-field::after {
+  content: "Auto calculated";
+}
+
+.deal-edit-modal {
+  width: min(1120px, calc(100vw - 32px));
+  max-width: 1120px !important;
+}
+
 .form-actions {
   display: flex;
   justify-content: flex-end;
@@ -1339,8 +1541,35 @@ td b {
   .dashboard-grid {
     grid-template-columns: 1fr;
   }
-  .form-grid {
+  .deal-form-grid {
     grid-template-columns: 1fr;
+    grid-template-areas: none;
+    row-gap: 16px;
+    padding: 20px 16px;
+  }
+  .deal-form-grid > * {
+    grid-area: auto !important;
+  }
+  .deal-form-shell {
+    max-width: none;
+  }
+  .deal-edit-modal {
+    width: calc(100vw - 24px);
+  }
+  .deal-form-grid .calc-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .deal-form-shell .form-actions,
+  .deal-edit-modal .modal-actions {
+    flex-direction: column-reverse;
+  }
+  .deal-form-shell .form-actions .button,
+  .deal-edit-modal .modal-actions .button {
+    width: 100%;
+    justify-content: center;
+    min-height: 46px;
   }
   .page-header {
     flex-direction: column;

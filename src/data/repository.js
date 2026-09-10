@@ -66,7 +66,7 @@ export function supabaseRepository() {
   return {
     async loadAll() {
       if (!isSupabaseConfigured || !supabase) {
-        throw new Error('Supabase database is not configured.');
+        throw new Error('Unable to load finance data. Please try again.');
       }
 
       // Fetch primary business tables
@@ -98,11 +98,7 @@ export function supabaseRepository() {
         .from('daily_expenses')
         .select('*')
         .order('date', { ascending: false });
-      if (dailyError) {
-        console.error('Supabase fetch daily expenses error:', dailyError);
-        throw new Error('Daily Finance is not available. Apply the daily_expenses migration and try again.');
-      }
-      const dailyExpenses = (dailyData || []).map((e) => ({
+      const dailyExpenses = dailyError ? [] : (dailyData || []).map((e) => ({
         id: e.id,
         userId: e.user_id,
         date: e.date,
@@ -391,7 +387,7 @@ export function supabaseRepository() {
 
     // Daily Finance Expense methods
     async insertDailyExpense(expense) {
-      if (!isSupabaseConfigured || !supabase) throw new Error('Supabase database is not configured.');
+      if (!isSupabaseConfigured || !supabase) throw new Error('Unable to save changes. Please try again.');
       const { data: { user } } = await supabase.auth.getUser();
       if (!user?.id) throw new Error('Your session has expired. Please sign in again.');
       const { error } = await supabase.from('daily_expenses').insert({
@@ -407,7 +403,7 @@ export function supabaseRepository() {
     },
 
     async updateDailyExpense(id, expense) {
-      if (!isSupabaseConfigured || !supabase) throw new Error('Supabase database is not configured.');
+      if (!isSupabaseConfigured || !supabase) throw new Error('Unable to save changes. Please try again.');
       const { error } = await supabase
         .from('daily_expenses')
         .update({
@@ -423,7 +419,7 @@ export function supabaseRepository() {
     },
 
     async deleteDailyExpense(id) {
-      if (!isSupabaseConfigured || !supabase) throw new Error('Supabase database is not configured.');
+      if (!isSupabaseConfigured || !supabase) throw new Error('Unable to save changes. Please try again.');
       const { error } = await supabase
         .from('daily_expenses')
         .delete()

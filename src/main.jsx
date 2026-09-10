@@ -158,7 +158,6 @@ function App() {
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(false);
-  const [dataError, setDataError] = useState("");
   const profileMenuRef = useRef(null);
 
   const supabaseRepo = supabaseRepository();
@@ -228,7 +227,6 @@ function App() {
   const loadData = async () => {
     if (!user) return;
     setDataLoading(true);
-    setDataError("");
     try {
       const remoteData = await supabaseRepo.loadAll();
       if (remoteData) {
@@ -236,7 +234,6 @@ function App() {
       }
     } catch (err) {
       console.error("Data load failed:", err);
-      setDataError(err?.message || "Unable to load finance data. Please try again.");
     } finally {
       setDataLoading(false);
     }
@@ -535,7 +532,6 @@ function App() {
         updateDealer,
         deleteDealer,
         dataLoading,
-        dataError,
         refreshData: loadData,
       }}
     >
@@ -647,22 +643,6 @@ function App() {
               "content page-" + current.toLowerCase().replaceAll(" ", "-")
             }
           >
-            {dataError && (
-              <div className="login-error-banner" style={{ marginBottom: "18px", justifyContent: "space-between" }} role="alert">
-                <div style={{ display: "flex", alignItems: "center", gap: "9px" }}>
-                  <AlertCircle size={16} />
-                  <span>{dataError}</span>
-                </div>
-                <button
-                  type="button"
-                  className="button"
-                  style={{ height: "30px", fontSize: "11.5px", padding: "0 10px" }}
-                  onClick={loadData}
-                >
-                  Retry
-                </button>
-              </div>
-            )}
             <Page current={current} onNavigate={go} />
           </div>
         </main>
@@ -2610,7 +2590,7 @@ function EditDealModal({ open, onClose, transaction, onSave }) {
 
   return (
     <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="modal-card" style={{ maxWidth: "660px" }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal-card deal-edit-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <h3>Edit deal — {transaction.id}</h3>
           <button className="icon-btn" onClick={onClose} aria-label="Close modal">
@@ -2620,7 +2600,8 @@ function EditDealModal({ open, onClose, transaction, onSave }) {
         <form onSubmit={submit}>
           <div className="modal-body">
             {error && <div className="login-error-banner">{error}</div>}
-            <div className="form-grid" style={{ padding: 0 }}>
+            <div className="form-grid deal-form-grid" style={{ padding: 0 }}>
+              <div className="deal-form-section-title">Deal information</div>
               <label className="field-group">
                 <span className="field-title">Deal Name</span>
                 <input
@@ -3022,9 +3003,10 @@ function NewDeal({ onNavigate }) {
         title="New deal"
         description="Record a new diamond sale or purchase deal."
       />
-      <form className="grouped-form" onSubmit={submit}>
-        <Panel title="Deal information" className="form-panel">
-          <div className="form-grid">
+      <form className="grouped-form deal-form-shell" onSubmit={submit}>
+        <Panel title="Deal information" className="form-panel new-deal-panel">
+          <div className="form-grid deal-form-grid">
+            <div className="deal-form-section-title">Deal information</div>
             <label className="field-group">
               <span className="field-title">Deal Name</span>
               <input
