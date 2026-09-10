@@ -1035,18 +1035,329 @@ function SearchInput({ value, onChange, placeholder }) {
   );
 }
 
+function AddDealPaymentModal({ open, onClose, deal, onPaymentSaved }) {
+  const [amount, setAmount] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [method, setMethod] = useState("Bank transfer");
+  const [reference, setReference] = useState("");
+  const [notes, setNotes] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (open && deal) {
+      setAmount("");
+      setDate(new Date().toISOString().slice(0, 10));
+      setMethod("Bank transfer");
+      setReference("");
+      setNotes("");
+      setError("");
+      setSubmitting(false);
+    }
+  }, [open, deal]);
+
+  if (!open || !deal) return null;
+
+  const remaining = Number(deal.remaining) || 0;
+  const numAmount = Number(String(amount).replace(/,/g, "")) || 0;
+
+  const handleAmountChange = (event) => {
+    const raw = event.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+    setAmount(raw ? formatIndianNumber(raw) : "");
+    const parsed = Number(raw) || 0;
+    if (parsed > remaining) {
+      setError("Payment cannot be more than the remaining amount.");
+    } else {
+      setError("");
+    }
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setError("");
+
+    if (!numAmount || numAmount <= 0) {
+      setError("Please enter an amount greater than 0.");
+      return;
+    }
+
+    if (numAmount > remaining) {
+      setError("Payment cannot be more than the remaining amount.");
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await onPaymentSaved({
+        transactionId: deal.deal?.id || deal.id,
+        dealerId: deal.deal?.dealerId || deal.deal?.sellerId || deal.dealerId || deal.sellerId || null,
+        amount: numAmount,
+        date: date || new Date().toISOString().slice(0, 10),
+        method: method || "Bank transfer",
+        reference: reference.trim(),
+        notes: notes.trim(),
+      });
+      onClose();
+    } catch (err) {
+      console.error("Payment save error:", err);
+      setError(err?.message || "Failed to save payment. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const isInvalid = !numAmount || numAmount <= 0 || numAmount > remaining;
+
+  return (
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="modal-card" style={{ maxWidth: "440px" }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h3>Add Payment</h3>
+          <button className="icon-btn" onClick={onClose} aria-label="Close modal">
+            <X size={16} />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body" style={{ gap: "16px" }}>
+            <div
+              style={{
+                background: "var(--blue-soft)",
+                border: "1px solid #d4e3fc",
+                borderRadius: "8px",
+                padding: "12px 14px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "4px",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: 600 }}>Deal:</span>
+                <b style={{ fontSize: "13px", color: "var(--ink)" }}>{deal.deal?.name || deal.name}</b>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: 600 }}>Remaining:</span>
+                <strong style={{ fontSize: "15px", fontFamily: "Manrope", color: "var(--blue)" }}>
+                  {money(remaining)}
+                </strong>
+              </div>
+            </div>
+
+            {error && (
+              <div
+                style={{
+                  background: "#fff4f2",
+                  border: "1px solid #fbd2ce",
+                  borderRadius: "6px",
+                  padding: "9px 12px",
+                  color: "#b8323c",
+                  fontSize: "12px",
+                  fontWeight: 500,
+                  lineHeight: 1.4,
+                }}
+                role="alert"
+              >
+                {error}
+              </div>
+            )}
+
+            <div>
+              <label style={{ display: "block", fontSize: "11px", fontWeight: 600, marginBottom: "6px" }}>
+                Amount
+              </label>
+              <div className="input-with-symbol">
+                <span className="input-symbol">₹</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={amount}
+                  onChange={handleAmountChange}
+                  placeholder="Enter amount"
+                  autoFocus
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: "11px", fontWeight: 600, marginBottom: "6px" }}>
+                Payment Date
+              </label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                required
+                style={{
+                  width: "100%",
+                  height: "38px",
+                  border: "1px solid var(--line)",
+                  borderRadius: "6px",
+                  padding: "0 10px",
+                  fontSize: "12px",
+                  color: "var(--ink)",
+                  background: "#fff",
+                }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: "11px", fontWeight: 600, marginBottom: "6px" }}>
+                Payment Method
+              </label>
+              <select
+                value={method}
+                onChange={(e) => setMethod(e.target.value)}
+                style={{
+                  width: "100%",
+                  height: "38px",
+                  border: "1px solid var(--line)",
+                  borderRadius: "6px",
+                  padding: "0 10px",
+                  fontSize: "12px",
+                  color: "var(--ink)",
+                  background: "#fff",
+                }}
+              >
+                <option value="Bank transfer">Bank Transfer</option>
+                <option value="UPI">UPI</option>
+                <option value="Cash">Cash</option>
+                <option value="Cheque">Cheque</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: "11px", fontWeight: 600, marginBottom: "6px" }}>
+                Reference
+              </label>
+              <input
+                type="text"
+                value={reference}
+                onChange={(e) => setReference(e.target.value)}
+                placeholder="UTR, Cheque #, or reference (optional)"
+                style={{
+                  width: "100%",
+                  height: "38px",
+                  border: "1px solid var(--line)",
+                  borderRadius: "6px",
+                  padding: "0 10px",
+                  fontSize: "12px",
+                  color: "var(--ink)",
+                  background: "#fff",
+                }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: "11px", fontWeight: 600, marginBottom: "6px" }}>
+                Notes
+              </label>
+              <input
+                type="text"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Additional notes (optional)"
+                style={{
+                  width: "100%",
+                  height: "38px",
+                  border: "1px solid var(--line)",
+                  borderRadius: "6px",
+                  padding: "0 10px",
+                  fontSize: "12px",
+                  color: "var(--ink)",
+                  background: "#fff",
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="modal-actions">
+            <Button secondary type="button" onClick={onClose} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isInvalid || submitting}>
+              {submitting ? "Saving..." : "Save Payment"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function Deals({ onNavigate }) {
-  const { data } = useData();
+  const { data, addPayment } = useData();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("All");
-  const rows = transactionRows(data);
-  const filtered = rows.filter(
-    (row) =>
-      row.join(" ").toLowerCase().includes(query.toLowerCase()) &&
-      (status === "All" || row[4] === status),
-  );
+  const [selectedDealForPayment, setSelectedDealForPayment] = useState(null);
+
+  const dealItems = (data.transactions || []).map((deal) => {
+    const dealer = (data.dealers || []).find(
+      (entry) => entry.id === (deal.dealerId || deal.sellerId)
+    );
+    const payments = (data.payments || []).filter((p) => p.transactionId === deal.id);
+    const original = Number(deal.totalRate || deal.amount) || 0;
+    const paid = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const remaining = Math.max(0, original - paid);
+    const paymentStatus = paid <= 0 ? "Pending" : remaining <= 0 ? "Paid" : "Partially Paid";
+    const formattedDate = new Date(deal.date).toLocaleDateString("en-US", {
+      month: "short",
+      day: "2-digit",
+      year: "numeric",
+    });
+
+    return {
+      deal,
+      dealer,
+      payments,
+      original,
+      paid,
+      remaining,
+      status: paymentStatus,
+      formattedDate,
+    };
+  });
+
+  const filteredDeals = dealItems.filter((item) => {
+    const searchTarget = `${item.deal.id} ${item.deal.name} ${item.dealer?.name || ""}`.toLowerCase();
+    const matchesQuery = !query || searchTarget.includes(query.toLowerCase());
+    const matchesStatus = status === "All" || item.status === status;
+    return matchesQuery && matchesStatus;
+  });
+
   const openDetails = (id) => onNavigate("/transaction-details?id=" + id);
-  const exportRows = filtered.map((row) => row.slice(0, 5));
+
+  const handleSavePayment = async ({ transactionId, dealerId, amount, date, method, reference, notes }) => {
+    const combinedNotes = [
+      reference ? `Ref: ${reference}` : "",
+      notes,
+    ].filter(Boolean).join(" • ");
+
+    const newPayment = {
+      id: nextId("PAY", data.payments),
+      transactionId,
+      dealerId,
+      date,
+      amount,
+      method,
+      status: "Completed",
+      notes: combinedNotes,
+    };
+
+    await addPayment(newPayment);
+  };
+
+  const exportRows = filteredDeals.map((item) => [
+    item.deal.id,
+    item.deal.name,
+    item.dealer?.name || "Unknown dealer",
+    item.formattedDate,
+    money(item.original),
+    money(item.paid),
+    money(item.remaining),
+    item.status,
+  ]);
+
   return (
     <>
       <PageHeader
@@ -1077,10 +1388,10 @@ function Deals({ onNavigate }) {
               onChange={(e) => setStatus(e.target.value)}
               aria-label="Filter deal status"
             >
-              <option>All</option>
-              <option>Completed</option>
-              <option>Pending</option>
-              <option>Processing</option>
+              <option value="All">All Statuses</option>
+              <option value="Pending">Pending</option>
+              <option value="Partially Paid">Partially Paid</option>
+              <option value="Paid">Paid</option>
             </select>
             <button
               className="icon-btn bordered"
@@ -1088,7 +1399,7 @@ function Deals({ onNavigate }) {
               onClick={() =>
                 downloadCsv(
                   "deals.csv",
-                  ["Deal ID", "Dealer", "Date", "Amount", "Status"],
+                  ["Deal ID", "Name", "Dealer", "Date", "Original Amount", "Paid", "Remaining", "Status"],
                   exportRows,
                 )
               }
@@ -1098,10 +1409,198 @@ function Deals({ onNavigate }) {
           </div>
         }
       >
-        <DealTable rows={filtered} onRowClick={openDetails} />
+        {!filteredDeals.length ? (
+          <div className="empty-state">
+            <Search size={20} />
+            <b>No deals found</b>
+            <span>Try clearing your search or filters.</span>
+          </div>
+        ) : (
+          <>
+            <div className="table-scroll desktop-data-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Deal</th>
+                    <th>Dealer</th>
+                    <th>Date</th>
+                    <th>Amount</th>
+                    <th>Paid / Remaining</th>
+                    <th>Status</th>
+                    <th style={{ textAlign: "right" }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredDeals.map((item) => (
+                    <tr
+                      key={item.deal.id}
+                      onClick={() => openDetails(item.deal.id)}
+                      className="clickable-row"
+                      style={{ cursor: "pointer" }}
+                    >
+                      <td>
+                        <b>{item.deal.name}</b>
+                        <small className="table-id">{item.deal.id}</small>
+                      </td>
+                      <td>{item.dealer?.name || "Unknown dealer"}</td>
+                      <td>{item.formattedDate}</td>
+                      <td>
+                        <b>{money(item.original)}</b>
+                      </td>
+                      <td>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                          <span style={{ fontSize: "11px", color: "var(--green)", fontWeight: 600 }}>
+                            Paid {money(item.paid)}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              color: item.remaining > 0 ? "var(--ink)" : "var(--muted)",
+                              fontWeight: item.remaining > 0 ? 600 : 400,
+                            }}
+                          >
+                            Remaining {money(item.remaining)}
+                          </span>
+                        </div>
+                      </td>
+                      <td>
+                        <Status>{item.status}</Status>
+                      </td>
+                      <td style={{ textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
+                        {item.remaining > 0 ? (
+                          <button
+                            type="button"
+                            className="btn-action-primary"
+                            onClick={() => setSelectedDealForPayment(item)}
+                          >
+                            <Plus size={13} />
+                            Add Payment
+                          </button>
+                        ) : (
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              fontSize: "11px",
+                              fontWeight: 600,
+                              color: "var(--green)",
+                              padding: "4px 8px",
+                              borderRadius: "5px",
+                              background: "var(--green-soft)",
+                            }}
+                          >
+                            <Check size={13} /> Paid
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mobile-data-list">
+              {filteredDeals.map((item) => (
+                <div
+                  key={item.deal.id}
+                  className="mobile-card-item"
+                  onClick={() => openDetails(item.deal.id)}
+                >
+                  <div className="mobile-card-main">
+                    <div className="mobile-card-copy">
+                      <b>{item.deal.name}</b>
+                      <span>{item.dealer?.name || "Unknown dealer"} • {item.formattedDate}</span>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
+                      <div className="mobile-card-amount">{money(item.original)}</div>
+                      <Status>{item.status}</Status>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: "8px",
+                      padding: "8px 10px",
+                      background: "#f8fafc",
+                      borderRadius: "6px",
+                      fontSize: "11px",
+                      border: "1px solid var(--line)",
+                    }}
+                  >
+                    <div>
+                      <span style={{ color: "var(--muted)", display: "block", fontSize: "10px" }}>Paid</span>
+                      <strong style={{ color: "var(--green)" }}>{money(item.paid)}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: "var(--muted)", display: "block", fontSize: "10px" }}>Remaining</span>
+                      <strong style={{ color: item.remaining > 0 ? "var(--ink)" : "var(--muted)" }}>
+                        {money(item.remaining)}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "8px",
+                      marginTop: "2px",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="link-btn-subtle"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openDetails(item.deal.id);
+                      }}
+                    >
+                      View Details <ArrowUpRight size={12} />
+                    </button>
+
+                    {item.remaining > 0 ? (
+                      <button
+                        type="button"
+                        className="btn-action-primary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedDealForPayment(item);
+                        }}
+                      >
+                        <Plus size={13} />
+                        Add Payment
+                      </button>
+                    ) : (
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          color: "var(--green)",
+                          padding: "3px 8px",
+                          borderRadius: "5px",
+                          background: "var(--green-soft)",
+                        }}
+                      >
+                        <Check size={13} /> Paid
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
         <div className="pagination">
           <span>
-            Showing {filtered.length ? 1 : 0} to {filtered.length} of{" "}
+            Showing {filteredDeals.length ? 1 : 0} to {filteredDeals.length} of{" "}
             {data.transactions.length} results
           </span>
           <div>
@@ -1123,13 +1622,21 @@ function Deals({ onNavigate }) {
           </div>
         </div>
       </Panel>
+
+      <AddDealPaymentModal
+        open={Boolean(selectedDealForPayment)}
+        onClose={() => setSelectedDealForPayment(null)}
+        deal={selectedDealForPayment}
+        onPaymentSaved={handleSavePayment}
+      />
     </>
   );
 }
 
 function DealDetails({ onNavigate }) {
-  const { data, updateTransaction } = useData();
+  const { data, updateTransaction, addPayment } = useData();
   const [editModal, setEditModal] = useState(false);
+  const [paymentModal, setPaymentModal] = useState(false);
   const id =
     new URLSearchParams(window.location.search).get("id") ||
     data.transactions[0]?.id;
@@ -1326,8 +1833,16 @@ function DealDetails({ onNavigate }) {
                 <span>No payments recorded for this deal yet.</span>
               </div>
             )}
-            <div style={{ marginTop: "16px", display: "flex", justifyContent: "flex-end" }}>
-              <Button onClick={() => onNavigate("/payments")}>
+            <div style={{ marginTop: "16px", display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+              {remainingAmount > 0 && (
+                <Button
+                  icon={Plus}
+                  onClick={() => setPaymentModal(true)}
+                >
+                  Add Payment
+                </Button>
+              )}
+              <Button secondary onClick={() => onNavigate("/payments")}>
                 Go to Payments
               </Button>
             </div>
@@ -1340,6 +1855,31 @@ function DealDetails({ onNavigate }) {
         onClose={() => setEditModal(false)}
         transaction={deal}
         onSave={handleSaveDeal}
+      />
+
+      <AddDealPaymentModal
+        open={paymentModal}
+        onClose={() => setPaymentModal(false)}
+        deal={{ deal, remaining: remainingAmount }}
+        onPaymentSaved={async (paymentInfo) => {
+          const combinedNotes = [
+            paymentInfo.reference ? `Ref: ${paymentInfo.reference}` : "",
+            paymentInfo.notes,
+          ].filter(Boolean).join(" • ");
+
+          const newPayment = {
+            id: nextId("PAY", data.payments),
+            transactionId: deal.id,
+            dealerId: deal.dealerId || deal.sellerId || null,
+            date: paymentInfo.date,
+            amount: paymentInfo.amount,
+            method: paymentInfo.method,
+            status: "Completed",
+            notes: combinedNotes,
+          };
+
+          await addPayment(newPayment);
+        }}
       />
     </>
   );

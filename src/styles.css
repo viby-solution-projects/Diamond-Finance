@@ -358,6 +358,9 @@ body,.app-shell,.main-area,.content{overflow-x:hidden}.table-scroll{overflow-x:v
 .mobile-card-actions{display:flex;align-items:center;gap:6px;margin-top:2px}
 .delete-confirm-text{font-size:13px;color:var(--ink);line-height:1.5;margin:0}
 .delete-warning-box{background:#fff4f2;border:1px solid #fbd2ce;border-radius:8px;padding:12px 14px;color:#b8323c;font-size:12px;line-height:1.4;font-weight:500}
+.btn-action-primary{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:6px;font-size:11.5px;font-weight:600;color:#fff;background:var(--blue);border:1px solid var(--blue);box-shadow:0 1px 3px rgba(35,100,232,.2);cursor:pointer;transition:all .15s ease;white-space:nowrap}
+.btn-action-primary:hover{background:#1b54c8;border-color:#1b54c8;box-shadow:0 2px 6px rgba(35,100,232,.3)}
+.btn-action-primary:disabled{opacity:.55;cursor:not-allowed;box-shadow:none}
 .dealer-role-tag{display:inline-flex;align-items:center;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600;background:#edf3ff;color:var(--blue);border:1px solid #d4e3fc}
 .analytics-header-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .period-control{min-height:36px;margin-top:0;min-width:240px}
