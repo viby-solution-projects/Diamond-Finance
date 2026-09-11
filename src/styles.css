@@ -2175,6 +2175,202 @@ td b {
   font-size: 11px;
 }
 
+@media (max-width: 767px) {
+  .bookkeeping-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+
+  .bookkeeping-summary > .stat {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 14px 16px;
+  }
+
+  .bookkeeping-summary .stat-top {
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .bookkeeping-summary strong {
+    font-size: clamp(20px, 5vw, 24px);
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+  }
+
+  .bookkeeping-panel .panel-head {
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+  }
+
+  .bookkeeping-panel .panel-head h2 {
+    font-size: 16px;
+  }
+
+  .bookkeeping-filter {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  .bookkeeping-filter .segmented-btn {
+    flex: 1 1 calc(33.333% - 3px);
+    min-height: 42px;
+    font-size: 13px;
+    padding: 10px 12px;
+  }
+
+  .bookkeeping-list {
+    padding: 12px 12px 14px;
+    gap: 12px;
+  }
+
+  .bookkeeping-entry {
+    gap: 12px;
+    padding: 14px;
+    border-radius: 12px;
+  }
+
+  .bookkeeping-entry-main {
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-start;
+  }
+
+  .bookkeeping-entry-main > div {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .bookkeeping-entry-main strong {
+    font-size: 15px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+
+  .bookkeeping-entry-main span {
+    display: block;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .bookkeeping-amount {
+    font-size: clamp(20px, 4vw, 24px);
+    line-height: 1.15;
+    width: 100%;
+    text-align: left;
+  }
+
+  .bookkeeping-entry-footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding-top: 10px;
+    font-size: 12px;
+  }
+
+  .bookkeeping-entry-footer > div {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .bookkeeping-modal-overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .bookkeeping-modal-card {
+    width: 100%;
+    max-width: 100%;
+    max-height: 92vh;
+    border-radius: 18px 18px 0 0;
+  }
+
+  .bookkeeping-modal-head {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+  }
+
+  .bookkeeping-modal-head h3 {
+    text-align: center;
+    font-size: 18px;
+  }
+
+  .bookkeeping-modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 16px;
+  }
+
+  .bookkeeping-form-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 0;
+  }
+
+  .bookkeeping-form-grid .field-group {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .bookkeeping-form-grid .field-title {
+    font-size: 13px;
+  }
+
+  .bookkeeping-form-grid .full {
+    grid-column: auto;
+  }
+
+  .bookkeeping-form-grid input,
+  .bookkeeping-form-grid select,
+  .bookkeeping-form-grid textarea,
+  .bookkeeping-form-grid .input-with-symbol {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 48px;
+    font-size: 15px;
+  }
+
+  .bookkeeping-form-grid .input-with-symbol input {
+    min-height: 48px;
+  }
+
+  .bookkeeping-form-grid textarea {
+    min-height: 96px;
+  }
+
+  .bookkeeping-modal-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 12px 16px 16px;
+  }
+
+  .bookkeeping-modal-actions .button {
+    width: 100%;
+    justify-content: center;
+    min-height: 48px;
+  }
+
+  .empty-state {
+    min-height: 0;
+    padding: 32px 20px;
+  }
+}
+
 .detail-layout {
   display: grid;
   grid-template-columns: 1fr 1fr;

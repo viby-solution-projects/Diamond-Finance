@@ -4274,22 +4274,26 @@ function Bookkeeping({ onNavigate }) {
         <div className="stat"><span className="stat-top">Net balance</span><strong>{money(totalIncome - totalExpenses)}</strong></div>
       </div>
       {formOpen && (
-        <div className="modal-overlay" onClick={resetForm} role="dialog" aria-modal="true">
-          <div className="modal-card" style={{ maxWidth: "620px" }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-head">
+        <div className="modal-overlay bookkeeping-modal-overlay" onClick={resetForm} role="dialog" aria-modal="true">
+          <div className="modal-card bookkeeping-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head bookkeeping-modal-head">
+              <button className="back-link compact-back" type="button" onClick={resetForm} aria-label="Back to Bookkeeping">
+                <ChevronLeft size={14} />
+                <span>Back</span>
+              </button>
               <h3>{editing ? "Edit Bookkeeping Entry" : "Add Bookkeeping Entry"}</h3>
               <button className="icon-btn" onClick={resetForm} aria-label="Close modal">
                 <X size={16} />
               </button>
             </div>
-            <form onSubmit={submit}>
-              <div className="modal-body">
+            <form onSubmit={submit} className="bookkeeping-form">
+              <div className="modal-body bookkeeping-modal-body">
                 {error && <div className="login-error-banner" role="alert">{error}</div>}
-                <div className="form-grid" style={{ padding: 0 }}>
+                <div className="form-grid bookkeeping-form-grid" style={{ padding: 0 }}>
                   <label className="field-group"><span className="field-title">Entry Type</span><select name="entryType" value={form.entryType} onChange={changeEntryType}><option>Income</option><option>Expense</option></select></label>
                   <label className="field-group"><span className="field-title">Date</span><input name="date" type="date" value={form.date} onChange={setField} required /></label>
                   <label className="field-group"><span className="field-title">Category</span><select name="category" value={form.category} onChange={setField} required>{categories.map((category) => <option key={category}>{category}</option>)}</select></label>
-                  <label className="field-group"><span className="field-title">Amount</span><div className="input-with-symbol"><span className="input-symbol">₹</span><input name="amount" inputMode="decimal" value={form.amount} onChange={(event) => { const raw = event.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1"); setForm((previous) => ({ ...previous, amount: raw ? formatIndianNumber(raw) : "" })); }} required /></div></label>
+                  <label className="field-group"><span className="field-title">Amount</span><div className="input-with-symbol currency-input"><span className="input-symbol">₹</span><input name="amount" inputMode="decimal" value={form.amount} onChange={(event) => { const raw = event.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1"); setForm((previous) => ({ ...previous, amount: raw ? formatIndianNumber(raw) : "" })); }} required /></div></label>
                   <label className="field-group"><span className="field-title">Dealer / Party</span><select name="dealerId" value={form.dealerId} onChange={setField}><option value="">None / Not linked</option>{data.dealers.map((dealer) => <option key={dealer.id} value={dealer.id}>{dealer.name}</option>)}</select></label>
                   <label className="field-group"><span className="field-title">Deal</span><select name="transactionId" value={form.transactionId} onChange={setField}><option value="">None / Not linked</option>{data.transactions.map((transaction) => { const dealer = data.dealers.find((item) => item.id === (transaction.dealerId || transaction.sellerId)); return <option key={transaction.id} value={transaction.id}>{transaction.name}{dealer ? ` - ${dealer.name}` : ""}</option>; })}</select></label>
                   <label className="field-group"><span className="field-title">Description</span><input name="description" value={form.description} onChange={setField} required /></label>
@@ -4297,7 +4301,7 @@ function Bookkeeping({ onNavigate }) {
                   <label className="field-group full"><span className="field-title">Reference / Notes</span><textarea name="notes" value={form.notes} onChange={setField} rows={2} /></label>
                 </div>
               </div>
-              <div className="modal-actions">
+              <div className="modal-actions bookkeeping-modal-actions">
                 <Button secondary type="button" onClick={resetForm}>Cancel</Button>
                 <Button type="submit">Save Entry</Button>
               </div>
@@ -4305,7 +4309,7 @@ function Bookkeeping({ onNavigate }) {
           </div>
         </div>
       )}
-      <Panel title="Entries" action={<div className="segmented-control bookkeeping-filter" role="radiogroup" aria-label="Filter bookkeeping entries">{["All", "Income", "Expense"].map((item) => <button key={item} type="button" role="radio" aria-checked={filter === item} className={`segmented-btn ${filter === item ? "active" : ""}`} onClick={() => setFilter(item)}>{item}</button>)}</div>}>
+      <Panel className="bookkeeping-panel" title="Entries" action={<div className="segmented-control bookkeeping-filter" role="radiogroup" aria-label="Filter bookkeeping entries">{["All", "Income", "Expense"].map((item) => <button key={item} type="button" role="radio" aria-checked={filter === item} className={`segmented-btn ${filter === item ? "active" : ""}`} onClick={() => setFilter(item)}>{item}</button>)}</div>}>
         <div className="bookkeeping-list">
           {visibleEntries.length ? visibleEntries.map((entry) => (
             <article className={`bookkeeping-entry ${entry.entryType.toLowerCase()}`} key={entry.id}>
