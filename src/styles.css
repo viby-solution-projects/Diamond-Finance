@@ -1014,9 +1014,28 @@ td b {
 
 .form-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 19px;
   padding: 22px 20px;
+}
+
+.form-grid > * {
+  min-width: 0;
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.field-title {
+  display: block;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
 }
 
 .form-grid label, .settings-panel label {
@@ -1025,28 +1044,95 @@ td b {
   color: var(--ink);
 }
 
-.form-grid input, .form-grid select, .form-grid textarea {
+.form-grid input, .form-grid select, .form-grid textarea,
+.field-group input, .field-group select, .field-group textarea {
   display: block;
   width: 100%;
-  margin-top: 7px;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  margin: 0;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 0 10px;
-  height: 40px;
+  border-radius: 8px;
+  padding: 0 12px;
+  min-height: 48px;
+  height: 48px;
   outline: 0;
-  font-size: 12.5px;
+  font-size: 14px;
   color: var(--ink);
   background: var(--input-bg);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.form-grid textarea {
-  height: 85px;
-  padding-top: 10px;
+.form-grid input:focus, .form-grid select:focus, .form-grid textarea:focus,
+.field-group input:focus, .field-group select:focus, .field-group textarea:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-soft);
+}
+
+.form-grid textarea,
+.field-group textarea {
+  min-height: 96px;
+  height: auto;
+  padding-top: 11px;
   resize: vertical;
 }
 
 .form-grid .full {
   grid-column: 1 / -1;
+}
+
+.input-with-symbol {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--input-bg);
+}
+
+.input-with-symbol:focus-within {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-soft);
+}
+
+.input-symbol {
+  display: grid;
+  place-items: center;
+  flex: 0 0 40px;
+  min-width: 40px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+  background: var(--line-subtle);
+  border-right: 1px solid var(--line);
+}
+
+.input-with-symbol input {
+  flex: 1 1 auto;
+  width: 0;
+  min-width: 0;
+  height: 100%;
+  min-height: 48px;
+  border: 0;
+  border-radius: 0;
+  padding: 0 12px;
+  background: transparent;
+}
+
+.currency-input {
+  width: 100%;
+  min-width: 0;
+}
+
+.currency-input .input-symbol {
+  flex: 0 0 auto;
+  width: 42px;
+  min-width: 42px;
 }
 
 /* New Deal and Edit Deal share a deliberate finance form grid. */
@@ -1632,6 +1718,8 @@ td b {
   }
   .form-grid {
     grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 0;
   }
   .deal-form-grid {
     grid-template-columns: 1fr;
@@ -1644,6 +1732,53 @@ td b {
   }
   .deal-form-shell {
     max-width: none;
+  }
+  .field-group,
+  .mobile-form .field-group {
+    min-width: 0;
+    width: 100%;
+  }
+  .mobile-form-modal {
+    width: min(100%, 460px);
+    max-width: 100%;
+    border-radius: 16px;
+  }
+  .mobile-form-head {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 8px;
+  }
+  .mobile-form-head h3 {
+    text-align: center;
+    font-size: 18px;
+  }
+  .compact-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 42px;
+    padding: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+  }
+  .mobile-form-body {
+    gap: 16px;
+    padding: 16px;
+  }
+  .mobile-form-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 12px 16px 16px;
+  }
+  .mobile-form-actions .button {
+    width: 100%;
+    justify-content: center;
+    min-height: 48px;
   }
   .deal-edit-modal {
     width: calc(100vw - 24px);
@@ -1695,16 +1830,24 @@ td b {
     width: 100%;
     padding: 10px 0;
     gap: 8px;
+    justify-content: space-between;
   }
   .pagination > span {
     min-width: 0;
     font-size: 11px;
+    line-height: 1.4;
+  }
+  .pagination-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: nowrap;
   }
   .pagination .icon-btn,
   .pagination .page-current {
-    width: 44px;
-    height: 44px;
-    flex: 0 0 44px;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
   }
   .page-header {
     flex-direction: column;
@@ -2269,20 +2412,35 @@ td b {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
   padding: 15px 19px;
   color: var(--muted);
   font-size: 10.5px;
 }
 
+.pagination > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.pagination-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
 .page-current {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 29px;
+  width: 32px;
+  height: 32px;
   background: var(--blue);
   color: #fff;
-  border-radius: 5px;
+  border-radius: 6px;
   font-size: 11px;
+  font-weight: 700;
 }
 
 .table-actions {

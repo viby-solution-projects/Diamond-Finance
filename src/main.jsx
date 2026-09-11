@@ -1625,20 +1625,22 @@ function AddExpenseModal({ open, onClose, expense, onSave }) {
 
   return (
     <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="modal-card" style={{ maxWidth: "460px" }} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
+      <div className="modal-card mobile-form-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head mobile-form-head">
+          <button className="back-link compact-back" type="button" onClick={onClose} aria-label="Back to Daily Finance">
+            <ChevronLeft size={14} />
+            <span>Back</span>
+          </button>
           <h3>{expense ? "Edit Expense" : "Add Expense"}</h3>
           <button className="icon-btn" onClick={onClose} aria-label="Close modal">
             <X size={16} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          <div className="modal-body">
+        <form onSubmit={handleSubmit} className="mobile-form">
+          <div className="modal-body mobile-form-body">
             {error && <div className="login-error-banner" role="alert">{error}</div>}
 
-            {/* Fields in exact requested order */}
-            {/* 1. Date */}
             <label className="field-group">
               <span className="field-title">Date</span>
               <input
@@ -1649,7 +1651,6 @@ function AddExpenseModal({ open, onClose, expense, onSave }) {
               />
             </label>
 
-            {/* 2. Category */}
             <label className="field-group">
               <span className="field-title">Category</span>
               <select
@@ -1665,24 +1666,22 @@ function AddExpenseModal({ open, onClose, expense, onSave }) {
               </select>
             </label>
 
-            {/* 3. Amount */}
             <label className="field-group">
               <span className="field-title">Amount</span>
-              <div className="input-with-symbol">
+              <div className="input-with-symbol currency-input">
                 <span className="input-symbol">₹</span>
                 <input
                   type="text"
                   inputMode="decimal"
                   value={amount}
                   onChange={handleAmountChange}
-                  placeholder="e.g. 5,000"
+                  placeholder="500"
                   autoFocus
                   required
                 />
               </div>
             </label>
 
-            {/* 4. Payment Method */}
             <label className="field-group">
               <span className="field-title">Payment Method</span>
               <select
@@ -1699,19 +1698,18 @@ function AddExpenseModal({ open, onClose, expense, onSave }) {
               </select>
             </label>
 
-            {/* 5. Description */}
             <label className="field-group">
-              <span className="field-title">Description / Note (Optional)</span>
+              <span className="field-title">Description</span>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Client visit, office supplies, tea/snacks..."
-                rows={2}
+                placeholder="Optional"
+                rows={3}
               />
             </label>
           </div>
 
-          <div className="modal-actions">
+          <div className="modal-actions mobile-form-actions">
             <Button secondary type="button" onClick={onClose} disabled={submitting}>
               Cancel
             </Button>
@@ -2190,7 +2188,7 @@ function Deals({ onNavigate }) {
             Showing {filteredDeals.length ? 1 : 0} to {filteredDeals.length} of{" "}
             {data.transactions.length} results
           </span>
-          <div>
+          <div className="pagination-controls">
             <button
               className="icon-btn bordered"
               aria-label="Previous page"
@@ -4465,7 +4463,7 @@ function SettingsPage({ onNavigate }) {
         onNavigate={onNavigate}
         eyebrow="Workspace"
         title="Settings"
-        description="Manage your account, theme appearance, business details and preferences."
+        description="Manage your account, theme appearance, and business details."
         action={<Button onClick={handleSave}>Save changes</Button>}
       />
 
@@ -4484,7 +4482,6 @@ function SettingsPage({ onNavigate }) {
       )}
 
       <div className="settings-page">
-        {/* APPEARANCE / THEME PREFERENCES */}
         <section className="settings-section">
           <div className="settings-section-head">
             <h2>Appearance & Theme</h2>
@@ -4568,55 +4565,6 @@ function SettingsPage({ onNavigate }) {
           </div>
         </section>
 
-        <section className="settings-section">
-          <div className="settings-section-head">
-            <h2>Notifications</h2>
-          </div>
-          <div className="settings-field-grid">
-            <label className="settings-toggle">
-              <div>
-                <span>Payment reminders</span>
-                <small>Notify when a payment or payout is pending.</small>
-              </div>
-              <input name="paymentReminders" type="checkbox" checked={Boolean(settings.paymentReminders)} onChange={setField} />
-            </label>
-            <label className="settings-toggle">
-              <div>
-                <span>Deal alerts</span>
-                <small>Alert when new deal activity is recorded.</small>
-              </div>
-              <input name="transactionAlerts" type="checkbox" checked={Boolean(settings.transactionAlerts)} onChange={setField} />
-            </label>
-          </div>
-        </section>
-
-        <section className="settings-section">
-          <div className="settings-section-head">
-            <h2>Preferences</h2>
-          </div>
-          <div className="settings-field-grid">
-            <label className="settings-field">
-              <span>Time zone</span>
-              <select name="timeZone" value={settings.timeZone || "Asia/Kolkata"} onChange={setField}>
-                <option value="Asia/Kolkata">Asia/Kolkata</option>
-                <option value="America/New_York">America/New_York</option>
-                <option value="Asia/Dubai">Asia/Dubai</option>
-                <option value="Europe/London">Europe/London</option>
-              </select>
-              <small>Controls date display in the dashboard.</small>
-            </label>
-            <label className="settings-field">
-              <span>Default view</span>
-              <select name="defaultView" value={settings.defaultView || "Dashboard"} onChange={setField}>
-                <option value="Dashboard">Dashboard</option>
-                <option value="Deals">Deals</option>
-                <option value="Daily Finance">Daily Finance</option>
-                <option value="Analytics">Analytics</option>
-              </select>
-              <small>Opened after login for the workspace.</small>
-            </label>
-          </div>
-        </section>
       </div>
     </>
   );
