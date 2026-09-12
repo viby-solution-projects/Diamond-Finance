@@ -2436,6 +2436,57 @@ function DealDetails({ onNavigate }) {
   );
 }
 
+function DealAmountSummary({
+  totalRate = 0,
+  termsPercent = 0,
+  termsAmount = 0,
+  amountAfterTerms = 0,
+  cvd = 0,
+  finalNet = 0,
+}) {
+  return (
+    <div className="amount-summary-section">
+      <div className="amount-summary-card">
+        <div className="amount-summary-head">
+          <span className="amount-summary-title">Amount Summary</span>
+        </div>
+        <div className="amount-summary-body">
+          <div className="amount-summary-row">
+            <span className="amount-summary-label">Total Rate</span>
+            <span className="amount-summary-value">{money(totalRate)}</span>
+          </div>
+
+          <div className="amount-summary-row">
+            <span className="amount-summary-label">Terms ({termsPercent}%)</span>
+            <span className={`amount-summary-value ${termsAmount > 0 ? "deduction-value" : ""}`}>
+              {termsAmount > 0 ? `-${money(termsAmount)}` : money(0)}
+            </span>
+          </div>
+
+          <div className="amount-summary-row">
+            <span className="amount-summary-label">Amount After Terms</span>
+            <span className="amount-summary-value">{money(amountAfterTerms)}</span>
+          </div>
+
+          <div className="amount-summary-row">
+            <span className="amount-summary-label">CVD</span>
+            <span className={`amount-summary-value ${cvd > 0 ? "deduction-value" : ""}`}>
+              {cvd > 0 ? `-${money(cvd)}` : money(0)}
+            </span>
+          </div>
+
+          <div className="amount-summary-divider" />
+
+          <div className="amount-summary-row final-net-highlight">
+            <span className="final-net-label">Final Net</span>
+            <span className="final-net-value">{money(finalNet)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EditDealModal({ open, onClose, transaction, onSave }) {
   const { data } = useData();
   const sellerDealers = data.dealers.filter(
@@ -2833,6 +2884,15 @@ function EditDealModal({ open, onClose, transaction, onSave }) {
                 />
               </label>
             </div>
+
+            <DealAmountSummary
+              totalRate={totalRateValue}
+              termsPercent={termsPercentValue}
+              termsAmount={termsAmountValue}
+              amountAfterTerms={amountAfterTermsValue}
+              cvd={cvdValue}
+              finalNet={finalNetValue}
+            />
           </div>
           <div className="modal-actions">
             <Button secondary type="button" onClick={onClose}>
@@ -3237,6 +3297,15 @@ function NewDeal({ onNavigate }) {
               />
             </label>
           </div>
+
+          <DealAmountSummary
+            totalRate={totalRateValue}
+            termsPercent={termsPercentValue}
+            termsAmount={termsAmountValue}
+            amountAfterTerms={amountAfterTermsValue}
+            cvd={cvdValue}
+            finalNet={finalNetValue}
+          />
         </Panel>
 
         {error && (
