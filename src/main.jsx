@@ -132,6 +132,33 @@ function formatIndianNumber(value) {
   return formattedInt + decPart;
 }
 
+function getUserDisplayName(profile, user) {
+  if (profile?.full_name && profile.full_name.trim()) {
+    return profile.full_name.trim();
+  }
+  if (user?.user_metadata?.full_name && user.user_metadata.full_name.trim()) {
+    return user.user_metadata.full_name.trim();
+  }
+  if (user?.email) {
+    const raw = user.email.split("@")[0] || "";
+    const parts = raw.split(/[._-]+/).filter(Boolean);
+    if (parts.length > 0) {
+      return parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(" ");
+    }
+    if (raw) {
+      return raw.charAt(0).toUpperCase() + raw.slice(1);
+    }
+  }
+  return "User";
+}
+
+function getTimeGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
 function App() {
   const [current, setCurrent] = useState(routeName());
   const [drawer, setDrawer] = useState(false);
@@ -499,7 +526,7 @@ function App() {
     window.history.replaceState({}, "", "/");
   }
 
-  const userName = profile?.full_name || user?.user_metadata?.full_name || (user?.email ? user.email.split("@")[0] : "User");
+  const userName = getUserDisplayName(profile, user);
   const userInitials = (userName || "U")
     .split(/\s+|@/)
     .filter(Boolean)
@@ -892,8 +919,8 @@ function MiniChart({ transactions, payments, period = "Monthly", monthCount = 6 
 function Dashboard({ onNavigate }) {
   const { data, user, profile } = useData();
   const [revenueRange, setRevenueRange] = useState("6");
-  const userName = profile?.full_name || user?.user_metadata?.full_name || (user?.email ? user.email.split("@")[0] : "User");
-  const greetingName = (userName || "User").split(" ")[0] || "User";
+  const displayName = getUserDisplayName(profile, user);
+  const timeGreeting = getTimeGreeting();
   const revenue = data.transactions.reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0);
   
   const totalPaidSum = data.payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
@@ -903,9 +930,7 @@ function Dashboard({ onNavigate }) {
   return (
     <>
       <PageHeader
-        eyebrow="Overview"
-        title={`Good day, ${greetingName}`}
-        description="Here's what's happening with your business today."
+        title={`${timeGreeting}, ${displayName}`}
         action={
           <Button onClick={() => onNavigate("/new-transaction")} icon={Plus}>
             New deal
@@ -1880,6 +1905,7 @@ function Deals({ onNavigate }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("All");
   const [selectedDealForPayment, setSelectedDealForPayment] = useState(null);
+  const [exporting, setExporting] = useState(false);
 
   const dealItems = (data.transactions || []).map((deal) => {
     const dealer = (data.dealers || []).find(
@@ -1932,16 +1958,42 @@ function Deals({ onNavigate }) {
     await addPayment(newPayment);
   };
 
-  const exportRows = filteredDeals.map((item) => [
-    item.deal.id,
-    item.deal.name,
-    item.dealer?.name || "Unknown dealer",
-    item.formattedDate,
-    money(item.original),
-    money(item.paid),
-    money(item.remaining),
-    item.status,
-  ]);
+  const handleExportDeals = () => {
+    setExporting(true);
+    try {
+      const headers = [
+        "Deal ID",
+        "Name",
+        "Dealer",
+        "Date",
+        "Original Amount",
+        "Paid",
+        "Remaining",
+        "Status",
+        "Payment Method",
+        "Notes",
+      ];
+      const exportRows = filteredDeals.map((item) => [
+        item.deal.id,
+        item.deal.name,
+        item.dealer?.name || "Unknown dealer",
+        item.formattedDate,
+        money(item.original),
+        money(item.paid),
+        money(item.remaining),
+        item.status,
+        item.deal.paymentMethod || "",
+        item.deal.notes || "",
+      ]);
+      downloadCsv(
+        `deals-${status.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`,
+        headers,
+        exportRows,
+      );
+    } finally {
+      setTimeout(() => setExporting(false), 300);
+    }
+  };
 
   return (
     <>
@@ -1953,9 +2005,19 @@ function Deals({ onNavigate }) {
         title="Deals"
         description="Track and manage all your diamond deals."
         action={
-          <Button onClick={() => onNavigate("/new-transaction")}>
-            New deal
-          </Button>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <Button onClick={() => onNavigate("/new-transaction")} icon={Plus}>
+              New deal
+            </Button>
+            <Button
+              secondary
+              icon={Download}
+              onClick={handleExportDeals}
+              disabled={exporting}
+            >
+              {exporting ? "Exporting..." : "Export"}
+            </Button>
+          </div>
         }
       />
       <Panel
@@ -1981,13 +2043,9 @@ function Deals({ onNavigate }) {
             <button
               className="icon-btn bordered"
               aria-label="Export deals"
-              onClick={() =>
-                downloadCsv(
-                  "deals.csv",
-                  ["Deal ID", "Name", "Dealer", "Date", "Original Amount", "Paid", "Remaining", "Status"],
-                  exportRows,
-                )
-              }
+              title="Export visible deals"
+              onClick={handleExportDeals}
+              disabled={exporting}
             >
               <Download size={16} />
             </button>
@@ -4235,6 +4293,7 @@ function Bookkeeping({ onNavigate }) {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState("");
+  const [exporting, setExporting] = useState(false);
   const [form, setForm] = useState({
     entryType: "Expense",
     date: new Date().toISOString().slice(0, 10),
@@ -4273,6 +4332,48 @@ function Bookkeeping({ onNavigate }) {
     setForm({ ...entry, amount: String(entry.amount) });
     setFormOpen(true);
     setError("");
+  };
+
+  const handleExportBookkeeping = () => {
+    setExporting(true);
+    try {
+      const headers = [
+        "Entry ID",
+        "Date",
+        "Type",
+        "Category",
+        "Description",
+        "Amount",
+        "Payment Method",
+        "Dealer / Party",
+        "Linked Deal",
+        "Notes",
+      ];
+      const exportRows = visibleEntries.map((entry) => {
+        const dealer = (data.dealers || []).find((d) => d.id === entry.dealerId);
+        const deal = (data.transactions || []).find((t) => t.id === entry.transactionId);
+        return [
+          entry.id || "",
+          entry.date ? new Date(entry.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "",
+          entry.entryType || "",
+          entry.category || "",
+          entry.description || "",
+          money(entry.amount || 0),
+          entry.paymentMethod || "",
+          dealer?.name || (entry.dealerId ? "Linked" : ""),
+          deal?.name || (entry.transactionId ? "Linked" : ""),
+          entry.notes || "",
+        ];
+      });
+
+      downloadCsv(
+        `bookkeeping-${filter.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`,
+        headers,
+        exportRows,
+      );
+    } finally {
+      setTimeout(() => setExporting(false), 300);
+    }
   };
 
   const categories = form.entryType === "Income"
@@ -4335,7 +4436,21 @@ function Bookkeeping({ onNavigate }) {
         eyebrow="Finance"
         title="Bookkeeping"
         description="Keep a simple record of broader business money coming in and going out."
-        action={<Button onClick={() => { resetForm(); setFormOpen(true); }}>Add Entry</Button>}
+        action={
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <Button onClick={() => { resetForm(); setFormOpen(true); }} icon={Plus}>
+              Add Entry
+            </Button>
+            <Button
+              secondary
+              icon={Download}
+              onClick={handleExportBookkeeping}
+              disabled={exporting}
+            >
+              {exporting ? "Exporting..." : "Export"}
+            </Button>
+          </div>
+        }
       />
       <div className="bookkeeping-summary">
         <div className="stat"><span className="stat-top">Total income</span><strong>{money(totalIncome)}</strong></div>
