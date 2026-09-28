@@ -35,6 +35,7 @@ import {
   Moon,
   Receipt,
   Layers,
+  LogOut,
 } from "lucide-react";
 import "./styles.css";
 import {
@@ -609,6 +610,10 @@ function App() {
           onNavigate={go}
           open={drawer}
           onClose={() => setDrawer(false)}
+          user={user}
+          userName={userName}
+          userInitials={userInitials}
+          onLogout={handleLogout}
         />
         <main className="main-area">
           <header className="topbar">
@@ -719,7 +724,7 @@ function App() {
   );
 }
 
-function Sidebar({ current, onNavigate, open, onClose }) {
+function Sidebar({ current, onNavigate, open, onClose, user, userName, userInitials, onLogout }) {
   return (
     <>
       {open && <div className="scrim" onClick={onClose} />}
@@ -756,7 +761,7 @@ function Sidebar({ current, onNavigate, open, onClose }) {
             <small>Finance workspace</small>
           </div>
         </div>
-        <nav>
+        <nav className="sidebar-nav">
           <small className="nav-label">MAIN MENU</small>
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -781,6 +786,33 @@ function Sidebar({ current, onNavigate, open, onClose }) {
             );
           })}
         </nav>
+        {user && (
+          <div className="sidebar-footer">
+            <div
+              className="sidebar-user"
+              onClick={() => onNavigate("/profile")}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onNavigate("/profile")}
+            >
+              <div className="sidebar-avatar">{userInitials || "U"}</div>
+              <div className="sidebar-user-info">
+                <b>{userName || "User"}</b>
+                <small>{user.email}</small>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="sidebar-logout-btn"
+              onClick={onLogout}
+              aria-label="Sign Out"
+              title="Sign Out"
+            >
+              <LogOut size={16} />
+              <span>Sign Out</span>
+            </button>
+          </div>
+        )}
       </aside>
     </>
   );
