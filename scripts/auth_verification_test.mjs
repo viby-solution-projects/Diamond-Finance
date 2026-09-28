@@ -47,13 +47,13 @@ function assert(description, condition, details = '') {
 console.log('--- TEST 1: Account 1 Verification (khakhkhard@gmail.com) ---');
 let role1 = '';
 try {
-  const res1 = await authSignIn('  khakhkhard@gmail.com  ', 'Khakhkhar@123');
+  const res1 = await authSignIn('  khakhkhard@gmail.com  ', 'khakhkhard!123');
   const isAcc1 = res1.user?.email === 'khakhkhard@gmail.com';
   role1 = res1.profile?.role;
   const isSuperAdmin = role1 === 'super_admin';
   
   assert(
-    'Account 1 login succeeds with FirstName@123 default credential & super_admin permissions',
+    'Account 1 login succeeds with khakhkhard!123 credential & super_admin permissions',
     isAcc1 && isSuperAdmin,
     `Authenticated User ID: ${res1.user?.id}, Email: ${res1.user?.email}, Role: ${res1.profile?.role}`
   );
@@ -67,13 +67,13 @@ try {
 console.log('\n--- TEST 2: Account 2 Verification (kpatel467@gmail.com) ---');
 let role2 = '';
 try {
-  const res2 = await authSignIn('KPATEL467@GMAIL.COM', 'KPatel@123');
+  const res2 = await authSignIn('KPATEL467@GMAIL.COM', 'kpatel467!123');
   const isAcc2 = res2.user?.email === 'kpatel467@gmail.com';
   role2 = res2.profile?.role;
   const isSuperAdmin = role2 === 'super_admin';
   
   assert(
-    'Account 2 login succeeds with FirstName@123 default credential & identical super_admin permissions',
+    'Account 2 login succeeds with kpatel467!123 credential & identical super_admin permissions',
     isAcc2 && isSuperAdmin,
     `Authenticated User ID: ${res2.user?.id}, Email: ${res2.user?.email}, Role: ${res2.profile?.role}`
   );
@@ -87,13 +87,13 @@ try {
 console.log('\n--- TEST 3: Account 3 Verification (heyhkchag@gmail.com) ---');
 let role3 = '';
 try {
-  const res3 = await authSignIn('  HEYHKCHAG@GMAIL.COM  ', 'HK@123');
+  const res3 = await authSignIn('  HEYHKCHAG@GMAIL.COM  ', 'heyhkchag!123');
   const isAcc3 = res3.user?.email === 'heyhkchag@gmail.com';
   role3 = res3.profile?.role;
   const isSuperAdmin = role3 === 'super_admin';
   
   assert(
-    'Account 3 login succeeds with FirstName@123 default credential & identical super_admin permissions',
+    'Account 3 login succeeds with heyhkchag!123 credential & identical super_admin permissions',
     isAcc3 && isSuperAdmin,
     `Authenticated User ID: ${res3.user?.id}, Email: ${res3.user?.email}, Role: ${res3.profile?.role}`
   );

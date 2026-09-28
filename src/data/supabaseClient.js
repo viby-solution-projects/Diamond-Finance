@@ -59,26 +59,22 @@ export function extractFirstName(fullName) {
   return parts[0] || 'User';
 }
 
-export function getDefaultPasswordForAccount(email, customName) {
+export function getDefaultPasswordForAccount(email) {
   const normalized = (email || '').trim().toLowerCase();
-  const details = getAuthorizedUserDetails(normalized);
-  const nameToUse = customName || details.name;
-  
-  if (normalized === 'khakhkhard@gmail.com') return 'Khakhkhar@123';
-  if (normalized === 'kpatel467@gmail.com') return 'KPatel@123';
-  if (normalized === 'heyhkchag@gmail.com') return 'HK@123';
-
-  const firstName = extractFirstName(nameToUse);
-  return `${firstName}@123`;
+  if (DEFAULT_ACCOUNT_PASSWORDS[normalized]) {
+    return DEFAULT_ACCOUNT_PASSWORDS[normalized];
+  }
+  const prefix = normalized.split('@')[0] || 'user';
+  return `${prefix}!123`;
 }
 
 /**
- * Default initial credentials following the FirstName@123 standard derived from profile data
+ * Account passwords following the exact authorized pattern
  */
 export const DEFAULT_ACCOUNT_PASSWORDS = {
-  'khakhkhard@gmail.com': 'Khakhkhar@123',
-  'kpatel467@gmail.com': 'KPatel@123',
-  'heyhkchag@gmail.com': 'HK@123',
+  'khakhkhard@gmail.com': 'khakhkhard!123',
+  'kpatel467@gmail.com': 'kpatel467!123',
+  'heyhkchag@gmail.com': 'heyhkchag!123',
 };
 
 /**

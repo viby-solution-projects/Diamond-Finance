@@ -395,6 +395,43 @@ export function supabaseRepository() {
       }
     },
 
+    async updatePayment(id, payment) {
+      const current = getLocalSharedData();
+      const updatedList = (current.payments || []).map((p) => (p.id === id ? { ...p, ...payment } : p));
+      saveLocalSharedData({ ...current, payments: updatedList });
+
+      if (!isSupabaseConfigured || !supabase) return;
+      try {
+        const updates = {};
+        if (payment.transactionId !== undefined) updates.transaction_id = payment.transactionId;
+        if (payment.dealerId !== undefined) updates.dealer_id = payment.dealerId;
+        if (payment.date !== undefined) updates.date = payment.date;
+        if (payment.amount !== undefined) updates.amount = payment.amount;
+        if (payment.method !== undefined) updates.method = payment.method;
+        if (payment.status !== undefined) updates.status = payment.status;
+        if (payment.notes !== undefined) updates.notes = payment.notes;
+
+        const { error } = await supabase.from('payments').update(updates).eq('id', id);
+        if (error) console.warn('Supabase updatePayment remote sync notice:', error);
+      } catch (e) {
+        console.warn('updatePayment network notice:', e);
+      }
+    },
+
+    async deletePayment(id) {
+      const current = getLocalSharedData();
+      const updatedList = (current.payments || []).filter((p) => p.id !== id);
+      saveLocalSharedData({ ...current, payments: updatedList });
+
+      if (!isSupabaseConfigured || !supabase) return;
+      try {
+        const { error } = await supabase.from('payments').delete().eq('id', id);
+        if (error) console.warn('Supabase deletePayment remote sync notice:', error);
+      } catch (e) {
+        console.warn('deletePayment network notice:', e);
+      }
+    },
+
     async insertBookkeepingEntry(entry) {
       const current = getLocalSharedData();
       const updatedList = [entry, ...(current.bookkeeping || []).filter((b) => b.id !== entry.id)];

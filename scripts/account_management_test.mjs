@@ -56,10 +56,10 @@ function assert(description, condition, details = '') {
 // Step 1: Login with Account 1 (khakhkhard@gmail.com)
 // -----------------------------------------------------------------------------
 console.log('--- STEP 1 & 2: Login with Account 1 & Account Settings ---');
-const originalPass1 = 'Khakhkhar@123';
+const originalPass1 = 'khakhkhard!123';
 const newPass1 = 'NewKhaKh#Pass2026!';
-const pass2 = 'KPatel@123';
-const pass3 = 'HK@123';
+const pass2 = 'kpatel467!123';
+const pass3 = 'heyhkchag!123';
 
 let acc1Session = null;
 try {

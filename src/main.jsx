@@ -357,6 +357,34 @@ function App() {
     }
   };
 
+  const updatePayment = async (id, updated) => {
+    try {
+      await supabaseRepo.updatePayment(id, updated);
+      setData((prev) => ({
+        ...prev,
+        payments: prev.payments.map((p) => (p.id === id ? { ...p, ...updated } : p)),
+      }));
+      return { success: true };
+    } catch (err) {
+      console.error("updatePayment error:", err);
+      throw err;
+    }
+  };
+
+  const deletePayment = async (id) => {
+    try {
+      await supabaseRepo.deletePayment(id);
+      setData((prev) => ({
+        ...prev,
+        payments: prev.payments.filter((p) => p.id !== id),
+      }));
+      return { success: true };
+    } catch (err) {
+      console.error("deletePayment error:", err);
+      return { success: false, reason: err.message || "Failed to delete payment." };
+    }
+  };
+
   const addBookkeepingEntry = async (entry) => {
     await supabaseRepo.insertBookkeepingEntry(entry);
     setData((prev) => ({ ...prev, bookkeeping: [entry, ...(prev.bookkeeping || [])] }));
@@ -560,6 +588,8 @@ function App() {
         updateTransaction,
         deleteTransaction,
         addPayment,
+        updatePayment,
+        deletePayment,
         addBookkeepingEntry,
         updateBookkeepingEntry,
         deleteBookkeepingEntry,
@@ -863,6 +893,171 @@ function Stat({ label, value, icon: Icon }) {
         </div>
       </div>
       <strong>{value}</strong>
+    </div>
+  );
+}
+
+function ConfirmDeleteModal({
+  open,
+  title = "Delete Confirmation",
+  message = "Are you sure you want to delete this record? This action cannot be undone.",
+  onConfirm,
+  onCancel,
+  loading = false,
+  error = "",
+}) {
+  if (!open) return null;
+  return (
+    <div className="modal-overlay" onClick={onCancel} role="dialog" aria-modal="true" aria-labelledby="confirm-delete-title">
+      <div className="modal-card confirm-delete-modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "440px" }}>
+        <div className="modal-head">
+          <h3 id="confirm-delete-title" style={{ display: "flex", alignItems: "center", gap: "8px", color: "#d04f59" }}>
+            <AlertCircle size={18} />
+            {title}
+          </h3>
+          <button className="icon-btn" onClick={onCancel} aria-label="Close dialog" disabled={loading}>
+            <X size={16} />
+          </button>
+        </div>
+        <div className="modal-body" style={{ padding: "16px 20px" }}>
+          {error && <div className="login-error-banner" role="alert" style={{ marginBottom: "12px" }}>{error}</div>}
+          <p style={{ margin: 0, fontSize: "13.5px", lineHeight: "1.5", color: "var(--ink)" }}>{message}</p>
+        </div>
+        <div className="modal-actions" style={{ padding: "14px 20px", display: "flex", justifyContent: "flex-end", gap: "10px", borderTop: "1px solid var(--line)" }}>
+          <button type="button" className="button secondary" onClick={onCancel} disabled={loading}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="button danger"
+            onClick={onConfirm}
+            disabled={loading}
+            style={{ background: "#d04f59", borderColor: "#d04f59", color: "#fff" }}
+          >
+            {loading ? "Deleting..." : "Delete"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditPaymentModal({ open, onClose, payment, onSave, loading = false }) {
+  const [form, setForm] = useState({
+    amount: "",
+    date: "",
+    method: "Bank transfer",
+    notes: "",
+  });
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (payment && open) {
+      setForm({
+        amount: payment.amount ? formatIndianNumber(payment.amount) : "",
+        date: payment.date || new Date().toISOString().slice(0, 10),
+        method: payment.method || "Bank transfer",
+        notes: payment.notes || "",
+      });
+      setError("");
+    }
+  }, [payment, open]);
+
+  if (!open || !payment) return null;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    const amountNum = parseFloat(String(form.amount).replace(/,/g, ""));
+    if (!form.date) return setError("Please enter a payment date.");
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
+      return setError("Please enter a valid amount greater than 0.");
+    }
+
+    try {
+      await onSave(payment.id, {
+        amount: amountNum,
+        date: form.date,
+        method: form.method,
+        notes: form.notes.trim(),
+      });
+      onClose();
+    } catch (err) {
+      setError(err?.message || "Failed to update payment.");
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "460px" }}>
+        <div className="modal-head">
+          <h3>Edit Payment — {payment.id}</h3>
+          <button className="icon-btn" onClick={onClose} aria-label="Close modal" disabled={loading}>
+            <X size={16} />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: "14px", padding: "16px 20px" }}>
+            {error && <div className="login-error-banner">{error}</div>}
+            <label className="field-group">
+              <span className="field-title">Amount (₹)</span>
+              <div className="input-with-symbol">
+                <span className="input-symbol">₹</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={form.amount}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+                    setForm((p) => ({ ...p, amount: raw ? formatIndianNumber(raw) : "" }));
+                  }}
+                  required
+                />
+              </div>
+            </label>
+            <label className="field-group">
+              <span className="field-title">Payment Date</span>
+              <input
+                type="date"
+                value={form.date}
+                onChange={(e) => setForm((p) => ({ ...p, date: e.target.value }))}
+                required
+              />
+            </label>
+            <label className="field-group">
+              <span className="field-title">Payment Method</span>
+              <select
+                value={form.method}
+                onChange={(e) => setForm((p) => ({ ...p, method: e.target.value }))}
+              >
+                <option value="Bank transfer">Bank transfer</option>
+                <option value="UPI">UPI</option>
+                <option value="Cash">Cash</option>
+                <option value="Cheque">Cheque</option>
+                <option value="Credit card">Credit card</option>
+                <option value="Other">Other</option>
+              </select>
+            </label>
+            <label className="field-group">
+              <span className="field-title">Notes / Reference</span>
+              <textarea
+                value={form.notes}
+                onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
+                rows={2}
+                placeholder="Optional notes or transaction reference..."
+              />
+            </label>
+          </div>
+          <div className="modal-actions" style={{ padding: "14px 20px", display: "flex", justifyContent: "flex-end", gap: "10px", borderTop: "1px solid var(--line)" }}>
+            <button type="button" className="button secondary" onClick={onClose} disabled={loading}>
+              Cancel
+            </button>
+            <button type="submit" className="button" disabled={loading}>
+              {loading ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
@@ -1261,6 +1456,9 @@ function DailyFinance({ onNavigate }) {
   const [specificDate, setSpecificDate] = useState("");
   const [expenseModalOpen, setExpenseModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState(null);
+  const [deletingExpense, setDeletingExpense] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   const expenses = data.dailyExpenses || [];
   const summaries = calculateDailyFinanceSummaries(expenses, dateFilter, categoryFilter, specificDate);
@@ -1275,12 +1473,22 @@ function DailyFinance({ onNavigate }) {
     setExpenseModalOpen(true);
   };
 
-  const handleDelete = async (expense) => {
-    if (!window.confirm(`Delete expense "${expense.category} - ${money(expense.amount)}"?`)) return;
+  const handleDeleteClick = (expense) => {
+    setDeleteError("");
+    setDeletingExpense(expense);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingExpense) return;
+    setDeleteLoading(true);
+    setDeleteError("");
     try {
-      await deleteDailyExpense(expense.id);
+      await deleteDailyExpense(deletingExpense.id);
+      setDeletingExpense(null);
     } catch (err) {
-      alert(err?.message || "Failed to delete expense.");
+      setDeleteError(err?.message || "Unable to delete this record. Please try again.");
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -1500,7 +1708,7 @@ function DailyFinance({ onNavigate }) {
                             <button
                               type="button"
                               className="btn-action danger"
-                              onClick={() => handleDelete(expense)}
+                              onClick={() => handleDeleteClick(expense)}
                               aria-label="Delete expense"
                             >
                               <Trash2 size={13} /> Delete
@@ -1566,7 +1774,7 @@ function DailyFinance({ onNavigate }) {
                         <button
                           type="button"
                           className="link-btn-subtle danger"
-                          onClick={() => handleDelete(expense)}
+                          onClick={() => handleDeleteClick(expense)}
                         >
                           Delete
                         </button>
@@ -1592,6 +1800,19 @@ function DailyFinance({ onNavigate }) {
         onClose={() => setExpenseModalOpen(false)}
         expense={editingExpense}
         onSave={handleSaveExpense}
+      />
+
+      <ConfirmDeleteModal
+        open={Boolean(deletingExpense)}
+        title="Delete Expense Record"
+        message={`Are you sure you want to delete expense "${deletingExpense?.category} - ${deletingExpense ? money(deletingExpense.amount) : ""}"? This action cannot be undone.`}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => {
+          setDeletingExpense(null);
+          setDeleteError("");
+        }}
+        loading={deleteLoading}
+        error={deleteError}
       />
     </>
   );
@@ -1912,10 +2133,14 @@ function AddDealPaymentModal({ open, onClose, deal, onPaymentSaved }) {
 }
 
 function Deals({ onNavigate }) {
-  const { data, addPayment } = useData();
+  const { data, addPayment, updateTransaction, deleteTransaction } = useData();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("All");
   const [selectedDealForPayment, setSelectedDealForPayment] = useState(null);
+  const [editingDeal, setEditingDeal] = useState(null);
+  const [deletingDeal, setDeletingDeal] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const [exporting, setExporting] = useState(false);
 
   const dealItems = (data.transactions || []).map((deal) => {
@@ -1967,6 +2192,30 @@ function Deals({ onNavigate }) {
     };
 
     await addPayment(newPayment);
+  };
+
+  const handleSaveDeal = async (updatedData) => {
+    if (!editingDeal) return;
+    await updateTransaction(editingDeal.id, updatedData);
+    setEditingDeal(null);
+  };
+
+  const handleConfirmDeleteDeal = async () => {
+    if (!deletingDeal) return;
+    setDeleteLoading(true);
+    setDeleteError("");
+    try {
+      const res = await deleteTransaction(deletingDeal.id);
+      if (res?.success) {
+        setDeletingDeal(null);
+      } else {
+        setDeleteError(res?.reason || "Unable to delete this record. Please try again.");
+      }
+    } catch (err) {
+      setDeleteError(err?.message || "Unable to delete this record. Please try again.");
+    } finally {
+      setDeleteLoading(false);
+    }
   };
 
   const handleExportDeals = () => {
@@ -2081,7 +2330,7 @@ function Deals({ onNavigate }) {
                     <th>Amount</th>
                     <th>Paid / Remaining</th>
                     <th>Status</th>
-                    <th style={{ textAlign: "right" }}>Action</th>
+                    <th style={{ textAlign: "right", paddingRight: "16px" }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2121,32 +2370,61 @@ function Deals({ onNavigate }) {
                         <Status>{item.status}</Status>
                       </td>
                       <td style={{ textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
-                        {item.remaining > 0 ? (
+                        <div className="table-actions">
                           <button
                             type="button"
-                            className="btn-action-primary"
-                            onClick={() => setSelectedDealForPayment(item)}
+                            className="btn-action"
+                            onClick={() => openDetails(item.deal.id)}
+                            aria-label={`View ${item.deal.name}`}
                           >
-                            <Plus size={13} />
-                            Add Payment
+                            <Eye size={13} /> View
                           </button>
-                        ) : (
-                          <span
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "4px",
-                              fontSize: "11px",
-                              fontWeight: 600,
-                              color: "var(--green)",
-                              padding: "4px 8px",
-                              borderRadius: "5px",
-                              background: "var(--green-soft)",
-                            }}
+                          <button
+                            type="button"
+                            className="btn-action"
+                            onClick={() => setEditingDeal(item.deal)}
+                            aria-label={`Edit ${item.deal.name}`}
                           >
-                            <Check size={13} /> Paid
-                          </span>
-                        )}
+                            <Pencil size={13} /> Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-action danger"
+                            onClick={() => {
+                              setDeleteError("");
+                              setDeletingDeal(item.deal);
+                            }}
+                            aria-label={`Delete ${item.deal.name}`}
+                          >
+                            <Trash2 size={13} /> Delete
+                          </button>
+                          {item.remaining > 0 ? (
+                            <button
+                              type="button"
+                              className="btn-action-primary"
+                              onClick={() => setSelectedDealForPayment(item)}
+                              aria-label={`Add payment for ${item.deal.name}`}
+                            >
+                              <Plus size={13} /> Pay
+                            </button>
+                          ) : (
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                fontSize: "11px",
+                                fontWeight: 600,
+                                color: "var(--green)",
+                                padding: "4px 8px",
+                                borderRadius: "5px",
+                                background: "var(--green-soft)",
+                              }}
+                            >
+                              <Check size={13} /> Paid
+                            </span>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -2197,53 +2475,47 @@ function Deals({ onNavigate }) {
                   </div>
 
                   <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: "8px",
-                      marginTop: "2px",
-                    }}
+                    className="mobile-card-actions"
+                    onClick={(e) => e.stopPropagation()}
                   >
                     <button
                       type="button"
                       className="link-btn-subtle"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openDetails(item.deal.id);
+                      onClick={() => openDetails(item.deal.id)}
+                    >
+                      View
+                    </button>
+                    <span className="dot-sep">•</span>
+                    <button
+                      type="button"
+                      className="link-btn-subtle"
+                      onClick={() => setEditingDeal(item.deal)}
+                    >
+                      Edit
+                    </button>
+                    <span className="dot-sep">•</span>
+                    <button
+                      type="button"
+                      className="link-btn-subtle danger"
+                      onClick={() => {
+                        setDeleteError("");
+                        setDeletingDeal(item.deal);
                       }}
                     >
-                      View Details <ArrowUpRight size={12} />
+                      Delete
                     </button>
-
-                    {item.remaining > 0 ? (
-                      <button
-                        type="button"
-                        className="btn-action-primary"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedDealForPayment(item);
-                        }}
-                      >
-                        <Plus size={13} />
-                        Add Payment
-                      </button>
-                    ) : (
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "4px",
-                          fontSize: "11px",
-                          fontWeight: 600,
-                          color: "var(--green)",
-                          padding: "3px 8px",
-                          borderRadius: "5px",
-                          background: "var(--green-soft)",
-                        }}
-                      >
-                        <Check size={13} /> Paid
-                      </span>
+                    {item.remaining > 0 && (
+                      <>
+                        <span className="dot-sep">•</span>
+                        <button
+                          type="button"
+                          className="link-btn-subtle"
+                          style={{ color: "var(--blue)", fontWeight: 700 }}
+                          onClick={() => setSelectedDealForPayment(item)}
+                        >
+                          + Pay
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -2283,13 +2555,39 @@ function Deals({ onNavigate }) {
         deal={selectedDealForPayment}
         onPaymentSaved={handleSavePayment}
       />
+
+      <EditDealModal
+        open={Boolean(editingDeal)}
+        onClose={() => setEditingDeal(null)}
+        transaction={editingDeal}
+        onSave={handleSaveDeal}
+      />
+
+      <ConfirmDeleteModal
+        open={Boolean(deletingDeal)}
+        title="Delete Deal"
+        message={`Are you sure you want to delete deal "${deletingDeal?.name}" (${deletingDeal?.id})? This action cannot be undone.`}
+        onConfirm={handleConfirmDeleteDeal}
+        onCancel={() => {
+          setDeletingDeal(null);
+          setDeleteError("");
+        }}
+        loading={deleteLoading}
+        error={deleteError}
+      />
     </>
   );
 }
 
 function DealDetails({ onNavigate }) {
-  const { data, updateTransaction } = useData();
+  const { data, updateTransaction, deleteTransaction, updatePayment, deletePayment } = useData();
   const [editModal, setEditModal] = useState(false);
+  const [deletingDeal, setDeletingDeal] = useState(null);
+  const [editingPayment, setEditingPayment] = useState(null);
+  const [deletingPayment, setDeletingPayment] = useState(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState("");
+
   const id = new URLSearchParams(window.location.search).get("id") || data.transactions[0]?.id;
   const deal = data.transactions.find((item) => item.id === id) || data.transactions[0];
   const dealer = data.dealers.find((item) => item.id === (deal?.sellerId || deal?.dealerId));
@@ -2314,6 +2612,48 @@ function DealDetails({ onNavigate }) {
 
   const handleSaveDeal = async (updatedData) => {
     await updateTransaction(deal.id, updatedData);
+    setEditModal(false);
+  };
+
+  const handleConfirmDeleteDeal = async () => {
+    if (!deal) return;
+    setActionLoading(true);
+    setActionError("");
+    try {
+      const res = await deleteTransaction(deal.id);
+      if (res?.success) {
+        onNavigate("/transactions");
+      } else {
+        setActionError(res?.reason || "Unable to delete this record. Please try again.");
+      }
+    } catch (err) {
+      setActionError(err?.message || "Unable to delete this record. Please try again.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleSavePayment = async (paymentId, updatedPaymentData) => {
+    await updatePayment(paymentId, updatedPaymentData);
+    setEditingPayment(null);
+  };
+
+  const handleConfirmDeletePayment = async () => {
+    if (!deletingPayment) return;
+    setActionLoading(true);
+    setActionError("");
+    try {
+      const res = await deletePayment(deletingPayment.id);
+      if (res?.success) {
+        setDeletingPayment(null);
+      } else {
+        setActionError(res?.reason || "Unable to delete this payment record. Please try again.");
+      }
+    } catch (err) {
+      setActionError(err?.message || "Unable to delete this payment record. Please try again.");
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   return (
@@ -2326,7 +2666,7 @@ function DealDetails({ onNavigate }) {
         title={deal.name}
         description="Deal details, financials, and payment history."
         action={
-          <div className="header-actions">
+          <div className="header-actions" style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
             <Button
               secondary
               onClick={() => setEditModal(true)}
@@ -2334,6 +2674,30 @@ function DealDetails({ onNavigate }) {
             >
               Edit deal
             </Button>
+            <button
+              type="button"
+              className="button danger"
+              onClick={() => {
+                setActionError("");
+                setDeletingDeal(deal);
+              }}
+              style={{
+                background: "rgba(208, 79, 89, 0.1)",
+                color: "#d04f59",
+                border: "1px solid rgba(208, 79, 89, 0.25)",
+                borderRadius: "8px",
+                padding: "0 14px",
+                height: "38px",
+                fontSize: "12px",
+                fontWeight: 600,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                cursor: "pointer",
+              }}
+            >
+              <Trash2 size={14} /> Delete deal
+            </button>
             <Button
               secondary
               onClick={() =>
@@ -2468,15 +2832,43 @@ function DealDetails({ onNavigate }) {
             {dealPayments.length ? (
               <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                 {dealPayments.map((p) => (
-                  <div key={p.id} className="item-row" style={{ margin: 0, padding: "12px 14px", border: "1px solid var(--line)", borderRadius: "8px", background: "var(--panel)" }}>
-                    <div className="gem-icon">
-                      <Check size={16} />
+                  <div key={p.id} className="item-row" style={{ margin: 0, padding: "12px 14px", border: "1px solid var(--line)", borderRadius: "8px", background: "var(--panel)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+                      <div className="gem-icon">
+                        <Check size={16} />
+                      </div>
+                      <div>
+                        <b>{p.method} — {money(p.amount)}</b>
+                        <small style={{ display: "block", color: "var(--muted)", fontSize: "11px" }}>{p.date} {p.notes ? `• ${p.notes}` : ""}</small>
+                      </div>
                     </div>
-                    <div>
-                      <b>{p.method} — {money(p.amount)}</b>
-                      <small>{p.date} {p.notes ? `• ${p.notes}` : ""}</small>
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px", flexShrink: 0 }}>
+                      <strong style={{ color: "var(--green)" }}>{money(p.amount)}</strong>
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        <button
+                          type="button"
+                          className="btn-action"
+                          onClick={() => {
+                            setActionError("");
+                            setEditingPayment(p);
+                          }}
+                          aria-label={`Edit payment ${p.id}`}
+                        >
+                          <Pencil size={12} /> Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-action danger"
+                          onClick={() => {
+                            setActionError("");
+                            setDeletingPayment(p);
+                          }}
+                          aria-label={`Delete payment ${p.id}`}
+                        >
+                          <Trash2 size={12} /> Delete
+                        </button>
+                      </div>
                     </div>
-                    <strong style={{ color: "var(--green)" }}>{money(p.amount)}</strong>
                   </div>
                 ))}
               </div>
@@ -2501,6 +2893,38 @@ function DealDetails({ onNavigate }) {
         onSave={handleSaveDeal}
       />
 
+      <EditPaymentModal
+        open={Boolean(editingPayment)}
+        onClose={() => setEditingPayment(null)}
+        payment={editingPayment}
+        onSave={handleSavePayment}
+      />
+
+      <ConfirmDeleteModal
+        open={Boolean(deletingDeal)}
+        title="Delete Deal"
+        message={`Are you sure you want to delete deal "${deal.name}" (${deal.id})? This action cannot be undone.`}
+        onConfirm={handleConfirmDeleteDeal}
+        onCancel={() => {
+          setDeletingDeal(null);
+          setActionError("");
+        }}
+        loading={actionLoading}
+        error={actionError}
+      />
+
+      <ConfirmDeleteModal
+        open={Boolean(deletingPayment)}
+        title="Delete Payment Record"
+        message={`Are you sure you want to delete this payment of ${deletingPayment ? money(deletingPayment.amount) : ""}? This action cannot be undone.`}
+        onConfirm={handleConfirmDeletePayment}
+        onCancel={() => {
+          setDeletingPayment(null);
+          setActionError("");
+        }}
+        loading={actionLoading}
+        error={actionError}
+      />
     </>
   );
 }
@@ -3921,35 +4345,39 @@ function DeleteDealerModal({ dealer, onClose, onConfirm, isUsed }) {
 
   return (
     <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-card confirm-delete-modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "440px" }}>
         <div className="modal-head">
-          <h3>Remove Dealer</h3>
-          <button className="icon-btn" onClick={onClose} aria-label="Close modal">
+          <h3 style={{ display: "flex", alignItems: "center", gap: "8px", color: "#d04f59" }}>
+            <AlertCircle size={18} />
+            Delete Dealer
+          </h3>
+          <button className="icon-btn" onClick={onClose} aria-label="Close dialog">
             <X size={16} />
           </button>
         </div>
-        <div className="modal-body">
+        <div className="modal-body" style={{ padding: "16px 20px" }}>
           {isUsed ? (
             <div className="delete-warning-box">
-              Cannot remove <b>{dealer.name}</b> because they are linked to recorded deals or payments.
+              Cannot delete <b>{dealer.name}</b> because they are linked to recorded deals or payments. Please delete or reassign linked records first.
             </div>
           ) : (
-            <p className="delete-confirm-text">
-              Are you sure you want to remove <b>{dealer.name}</b>?
+            <p className="delete-confirm-text" style={{ margin: 0, fontSize: "13.5px", lineHeight: "1.5", color: "var(--ink)" }}>
+              Are you sure you want to delete dealer <b>"{dealer.name}"</b>? This action cannot be undone.
             </p>
           )}
         </div>
-        <div className="modal-actions">
-          <Button secondary type="button" onClick={onClose}>
+        <div className="modal-actions" style={{ padding: "14px 20px", display: "flex", justifyContent: "flex-end", gap: "10px", borderTop: "1px solid var(--line)" }}>
+          <button type="button" className="button secondary" onClick={onClose}>
             Cancel
-          </Button>
+          </button>
           {!isUsed && (
             <button
               type="button"
               className="button danger"
               onClick={() => onConfirm(dealer.id)}
+              style={{ background: "#d04f59", borderColor: "#d04f59", color: "#fff" }}
             >
-              Remove
+              Delete
             </button>
           )}
         </div>
@@ -3959,8 +4387,15 @@ function DeleteDealerModal({ dealer, onClose, onConfirm, isUsed }) {
 }
 
 function Payments({ onNavigate }) {
-  const { data } = useData();
+  const { data, addPayment, updatePayment, deletePayment } = useData();
   const [filterStatus, setFilterStatus] = useState("All");
+  const [activeTab, setActiveTab] = useState("records"); // "records" or "deals"
+  const [selectedDealForPayment, setSelectedDealForPayment] = useState(null);
+  const [editingPayment, setEditingPayment] = useState(null);
+  const [deletingPayment, setDeletingPayment] = useState(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const [exporting, setExporting] = useState(false);
 
   const dealRows = (data.transactions || []).map((deal) => {
     const payments = (data.payments || []).filter((p) => p.transactionId === deal.id);
@@ -3990,6 +4425,90 @@ function Payments({ onNavigate }) {
     return row.status === filterStatus;
   });
 
+  const allPayments = (data.payments || []).map((p) => {
+    const deal = (data.transactions || []).find((t) => t.id === p.transactionId);
+    const dealer = (data.dealers || []).find((d) => d.id === (p.dealerId || deal?.dealerId || deal?.sellerId));
+    return {
+      ...p,
+      dealName: deal?.name || p.transactionId || "Unknown deal",
+      dealerName: dealer?.name || "Unassigned",
+    };
+  });
+
+  const handleSavePayment = async ({ transactionId, dealerId, amount, date, method }) => {
+    const newPayment = {
+      id: nextId("PAY", data.payments),
+      transactionId,
+      dealerId,
+      date,
+      amount,
+      method,
+      status: "Completed",
+      notes: "",
+    };
+    await addPayment(newPayment);
+    setSelectedDealForPayment(null);
+  };
+
+  const handleUpdatePayment = async (id, updated) => {
+    await updatePayment(id, updated);
+    setEditingPayment(null);
+  };
+
+  const handleConfirmDeletePayment = async () => {
+    if (!deletingPayment) return;
+    setActionLoading(true);
+    setActionError("");
+    try {
+      const res = await deletePayment(deletingPayment.id);
+      if (res?.success) {
+        setDeletingPayment(null);
+      } else {
+        setActionError(res?.reason || "Unable to delete this payment record.");
+      }
+    } catch (err) {
+      setActionError(err?.message || "Unable to delete this payment record.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleExport = () => {
+    setExporting(true);
+    try {
+      if (activeTab === "records") {
+        const headers = ["Payment ID", "Date", "Deal", "Dealer", "Method", "Amount", "Notes"];
+        const rows = allPayments.map((p) => [
+          p.id,
+          p.date,
+          p.dealName,
+          p.dealerName,
+          p.method,
+          money(p.amount),
+          p.notes || "",
+        ]);
+        downloadCsv(`payment-records-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+      } else {
+        const headers = ["Deal ID", "Deal Name", "Dealer", "Original Amount", "Paid", "Remaining", "Status"];
+        const rows = filteredDeals.map((r) => [
+          r.deal.id,
+          r.deal.name,
+          r.dealer?.name || "",
+          money(r.original),
+          money(r.paid),
+          money(r.remaining),
+          r.status,
+        ]);
+        downloadCsv(`deal-balances-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+      }
+    } finally {
+      setTimeout(() => setExporting(false), 300);
+    }
+  };
+
+  // Quick list of deals with remaining balance for recording payment
+  const pendingDeals = dealRows.filter((r) => r.remaining > 0);
+
   return (
     <>
       <PageHeader
@@ -3998,13 +4517,33 @@ function Payments({ onNavigate }) {
         onNavigate={onNavigate}
         eyebrow="Finance"
         title="Payments"
-        description="Track and record partial and full payments against your deals."
+        description="Track, record, edit, and settle payments against your diamond deals."
+        action={
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+            {pendingDeals.length > 0 && (
+              <Button
+                onClick={() => setSelectedDealForPayment(pendingDeals[0])}
+                icon={Plus}
+              >
+                Record Payment
+              </Button>
+            )}
+            <Button
+              secondary
+              icon={Download}
+              onClick={handleExport}
+              disabled={exporting}
+            >
+              {exporting ? "Exporting..." : "Export"}
+            </Button>
+          </div>
+        }
       />
 
       <div className="payment-summary">
         <div className="stat">
           <div className="stat-top">
-            <span>Total Due</span>
+            <span>Total Volume</span>
             <div className="stat-icon">
               <CircleDollarSign size={16} />
             </div>
@@ -4014,106 +4553,310 @@ function Payments({ onNavigate }) {
         </div>
         <div className="stat">
           <div className="stat-top">
-            <span>Total Paid</span>
+            <span>Total Collected</span>
             <div className="stat-icon" style={{ background: "var(--green-soft)", color: "var(--green)" }}>
               <Check size={16} />
             </div>
           </div>
           <strong>{money(totalPaid)}</strong>
-          <small className="up">Collected payments</small>
+          <small className="up">{allPayments.length} payments recorded</small>
         </div>
         <div className="stat">
           <div className="stat-top">
-            <span>Total Remaining</span>
+            <span>Outstanding Balance</span>
             <div className="stat-icon" style={{ background: "var(--yellow-soft)", color: "var(--yellow)" }}>
               <Wallet size={16} />
             </div>
           </div>
           <strong>{money(totalRemaining)}</strong>
-          <small className="down">Outstanding balance</small>
+          <small className="down">Pending collection</small>
         </div>
       </div>
 
-      <Panel
-        title="Deal Payments"
-        action={
-          <div className="panel-actions">
-            <select
-              className="filter"
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              aria-label="Filter by payment status"
-            >
-              <option value="All">All Statuses</option>
-              <option value="Pending">Pending</option>
-              <option value="Partially Paid">Partially Paid</option>
-              <option value="Paid">Paid</option>
-            </select>
-          </div>
-        }
-      >
-        {filteredDeals.length ? (
-          <>
-            <div className="table-scroll desktop-data-table">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Deal</th>
-                    <th>Dealer</th>
-                    <th>Original Amount</th>
-                    <th>Paid</th>
-                    <th>Remaining</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredDeals.map((row) => (
-                    <tr key={row.deal.id}>
-                      <td>
-                        <b>{row.deal.name}</b>
-                        <small className="table-id">{row.deal.id}</small>
-                      </td>
-                      <td>{row.dealer?.name || "Unknown dealer"}</td>
-                      <td><b>{money(row.original)}</b></td>
-                      <td style={{ color: "var(--green)", fontWeight: 600 }}>{money(row.paid)}</td>
-                      <td style={{ color: row.remaining > 0 ? "var(--ink)" : "var(--muted)", fontWeight: 600 }}>
-                        {money(row.remaining)}
-                      </td>
-                      <td>
-                        <Status>{row.status}</Status>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+      <div style={{ display: "flex", gap: "10px", marginBottom: "16px", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }}>
+        <div className="segmented-control" role="tablist" aria-label="Payment Views">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "records"}
+            className={`segmented-btn ${activeTab === "records" ? "active" : ""}`}
+            onClick={() => setActiveTab("records")}
+          >
+            Payment Records ({allPayments.length})
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "deals"}
+            className={`segmented-btn ${activeTab === "deals" ? "active" : ""}`}
+            onClick={() => setActiveTab("deals")}
+          >
+            Deal Balances ({dealRows.length})
+          </button>
+        </div>
 
-            <div className="mobile-data-list">
-              {filteredDeals.map((row) => (
-                <div key={row.deal.id} className="mobile-card-item">
-                  <div className="mobile-card-main">
-                    <div className="mobile-card-copy">
-                      <b>{row.deal.name}</b>
-                      <span>{row.dealer?.name || "Unknown dealer"}</span>
-                    </div>
-                    <div className="mobile-card-amount">{money(row.original)}</div>
-                  </div>
-                  <div className="mobile-card-meta">
-                    <span>Paid: {money(row.paid)} • Rem: {money(row.remaining)}</span>
-                    <Status>{row.status}</Status>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          <div className="empty-state">
-            <CreditCard size={20} />
-            <b>No deals found</b>
-            <span>{data.transactions.length ? "Change your filter to see payment records." : "Create a deal to start tracking payments."}</span>
-          </div>
+        {activeTab === "deals" && (
+          <select
+            className="filter"
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            aria-label="Filter by payment status"
+          >
+            <option value="All">All Statuses</option>
+            <option value="Pending">Pending</option>
+            <option value="Partially Paid">Partially Paid</option>
+            <option value="Paid">Paid</option>
+          </select>
         )}
-      </Panel>
+      </div>
+
+      {activeTab === "records" ? (
+        <Panel title="All Payment Records">
+          {allPayments.length ? (
+            <>
+              <div className="table-scroll desktop-data-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Deal</th>
+                      <th>Dealer</th>
+                      <th>Method</th>
+                      <th>Amount</th>
+                      <th>Notes</th>
+                      <th style={{ textAlign: "right", paddingRight: "16px" }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allPayments.map((p) => (
+                      <tr key={p.id}>
+                        <td>{p.date}</td>
+                        <td>
+                          <b>{p.dealName}</b>
+                          <small className="table-id">{p.transactionId}</small>
+                        </td>
+                        <td>{p.dealerName}</td>
+                        <td>{p.method}</td>
+                        <td style={{ color: "var(--green)", fontWeight: 700 }}>
+                          {money(p.amount)}
+                        </td>
+                        <td style={{ color: "var(--muted)", fontSize: "11px" }}>
+                          {p.notes || "—"}
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          <div className="table-actions">
+                            <button
+                              type="button"
+                              className="btn-action"
+                              onClick={() => {
+                                setActionError("");
+                                setEditingPayment(p);
+                              }}
+                              aria-label={`Edit payment ${p.id}`}
+                            >
+                              <Pencil size={12} /> Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-action danger"
+                              onClick={() => {
+                                setActionError("");
+                                setDeletingPayment(p);
+                              }}
+                              aria-label={`Delete payment ${p.id}`}
+                            >
+                              <Trash2 size={12} /> Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mobile-data-list">
+                {allPayments.map((p) => (
+                  <div key={p.id} className="mobile-card-item">
+                    <div className="mobile-card-main">
+                      <div className="mobile-card-copy">
+                        <b>{p.dealName}</b>
+                        <span>{p.dealerName} • {p.date}</span>
+                      </div>
+                      <div className="mobile-card-amount" style={{ color: "var(--green)" }}>
+                        {money(p.amount)}
+                      </div>
+                    </div>
+                    <div className="mobile-card-meta">
+                      <span>Method: {p.method} {p.notes ? `• ${p.notes}` : ""}</span>
+                      <div className="mobile-card-actions">
+                        <button
+                          type="button"
+                          className="link-btn-subtle"
+                          onClick={() => {
+                            setActionError("");
+                            setEditingPayment(p);
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <span className="dot-sep">•</span>
+                        <button
+                          type="button"
+                          className="link-btn-subtle danger"
+                          onClick={() => {
+                            setActionError("");
+                            setDeletingPayment(p);
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="empty-state">
+              <CreditCard size={24} />
+              <b>No payments recorded yet</b>
+              <span>Payments added against deals will appear here.</span>
+            </div>
+          )}
+        </Panel>
+      ) : (
+        <Panel title="Deal Balances & Settlement">
+          {filteredDeals.length ? (
+            <>
+              <div className="table-scroll desktop-data-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Deal</th>
+                      <th>Dealer</th>
+                      <th>Original Amount</th>
+                      <th>Paid</th>
+                      <th>Remaining</th>
+                      <th>Status</th>
+                      <th style={{ textAlign: "right", paddingRight: "16px" }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredDeals.map((row) => (
+                      <tr key={row.deal.id}>
+                        <td>
+                          <b>{row.deal.name}</b>
+                          <small className="table-id">{row.deal.id}</small>
+                        </td>
+                        <td>{row.dealer?.name || "Unknown dealer"}</td>
+                        <td><b>{money(row.original)}</b></td>
+                        <td style={{ color: "var(--green)", fontWeight: 600 }}>{money(row.paid)}</td>
+                        <td style={{ color: row.remaining > 0 ? "var(--ink)" : "var(--muted)", fontWeight: 600 }}>
+                          {money(row.remaining)}
+                        </td>
+                        <td>
+                          <Status>{row.status}</Status>
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          {row.remaining > 0 ? (
+                            <button
+                              type="button"
+                              className="btn-action-primary"
+                              onClick={() => setSelectedDealForPayment(row)}
+                            >
+                              <Plus size={13} /> Add Payment
+                            </button>
+                          ) : (
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                                fontSize: "11px",
+                                fontWeight: 600,
+                                color: "var(--green)",
+                                padding: "4px 8px",
+                                borderRadius: "5px",
+                                background: "var(--green-soft)",
+                              }}
+                            >
+                              <Check size={13} /> Paid
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mobile-data-list">
+                {filteredDeals.map((row) => (
+                  <div key={row.deal.id} className="mobile-card-item">
+                    <div className="mobile-card-main">
+                      <div className="mobile-card-copy">
+                        <b>{row.deal.name}</b>
+                        <span>{row.dealer?.name || "Unknown dealer"}</span>
+                      </div>
+                      <div className="mobile-card-amount">{money(row.original)}</div>
+                    </div>
+                    <div className="mobile-card-meta">
+                      <span>Paid: {money(row.paid)} • Rem: {money(row.remaining)}</span>
+                      <Status>{row.status}</Status>
+                    </div>
+                    {row.remaining > 0 && (
+                      <div style={{ marginTop: "6px", display: "flex", justifyContent: "flex-end" }}>
+                        <button
+                          type="button"
+                          className="btn-action-primary"
+                          onClick={() => setSelectedDealForPayment(row)}
+                        >
+                          <Plus size={13} /> Add Payment
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="empty-state">
+              <CreditCard size={20} />
+              <b>No deals found</b>
+              <span>Change your filter to see payment records.</span>
+            </div>
+          )}
+        </Panel>
+      )}
+
+      <AddDealPaymentModal
+        open={Boolean(selectedDealForPayment)}
+        onClose={() => setSelectedDealForPayment(null)}
+        deal={selectedDealForPayment}
+        onPaymentSaved={handleSavePayment}
+      />
+
+      <EditPaymentModal
+        open={Boolean(editingPayment)}
+        onClose={() => setEditingPayment(null)}
+        payment={editingPayment}
+        onSave={handleUpdatePayment}
+        loading={actionLoading}
+      />
+
+      <ConfirmDeleteModal
+        open={Boolean(deletingPayment)}
+        title="Delete Payment Record"
+        message={`Are you sure you want to delete this payment of ${deletingPayment ? money(deletingPayment.amount) : ""}? This action cannot be undone.`}
+        onConfirm={handleConfirmDeletePayment}
+        onCancel={() => {
+          setDeletingPayment(null);
+          setActionError("");
+        }}
+        loading={actionLoading}
+        error={actionError}
+      />
     </>
   );
 }
@@ -4303,6 +5046,10 @@ function Bookkeeping({ onNavigate }) {
   const [filter, setFilter] = useState("All");
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [deletingEntry, setDeletingEntry] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [exporting, setExporting] = useState(false);
   const [form, setForm] = useState({
@@ -4336,6 +5083,7 @@ function Bookkeeping({ onNavigate }) {
     setEditing(null);
     setFormOpen(false);
     setError("");
+    setSaving(false);
   };
 
   const openEdit = (entry) => {
@@ -4417,21 +5165,29 @@ function Bookkeeping({ onNavigate }) {
       amount,
       notes: form.notes.trim(),
     };
+    setSaving(true);
     try {
       if (editing) await updateBookkeepingEntry(editing.id, entry);
       else await addBookkeepingEntry(entry);
       resetForm();
     } catch (err) {
       setError(err?.message || "Unable to save bookkeeping entry. Please try again.");
+    } finally {
+      setSaving(false);
     }
   };
 
-  const remove = async (entry) => {
-    if (!window.confirm(`Delete "${entry.description}"?`)) return;
+  const handleConfirmDelete = async () => {
+    if (!deletingEntry) return;
+    setDeleteLoading(true);
+    setDeleteError("");
     try {
-      await deleteBookkeepingEntry(entry.id);
+      await deleteBookkeepingEntry(deletingEntry.id);
+      setDeletingEntry(null);
     } catch (err) {
-      setError(err?.message || "Unable to delete bookkeeping entry. Please try again.");
+      setDeleteError(err?.message || "Unable to delete this record. Please try again.");
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -4477,7 +5233,7 @@ function Bookkeeping({ onNavigate }) {
                 <span>Back</span>
               </button>
               <h3>{editing ? "Edit Bookkeeping Entry" : "Add Bookkeeping Entry"}</h3>
-              <button className="icon-btn" onClick={resetForm} aria-label="Close modal">
+              <button className="icon-btn" onClick={resetForm} aria-label="Close modal" disabled={saving}>
                 <X size={16} />
               </button>
             </div>
@@ -4497,8 +5253,8 @@ function Bookkeeping({ onNavigate }) {
                 </div>
               </div>
               <div className="modal-actions bookkeeping-modal-actions">
-                <Button secondary type="button" onClick={resetForm}>Cancel</Button>
-                <Button type="submit">Save Entry</Button>
+                <Button secondary type="button" onClick={resetForm} disabled={saving}>Cancel</Button>
+                <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Save Entry"}</Button>
               </div>
             </form>
           </div>
@@ -4509,11 +5265,24 @@ function Bookkeeping({ onNavigate }) {
           {visibleEntries.length ? visibleEntries.map((entry) => (
             <article className={`bookkeeping-entry ${entry.entryType.toLowerCase()}`} key={entry.id}>
               <div className="bookkeeping-entry-main"><div><strong>{entry.description}</strong><span>{entry.category} · {new Date(entry.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span><small style={{ display: "block", color: "var(--muted)", fontSize: "10.5px", marginTop: "2px" }}>{entry.paymentMethod}</small></div><strong className="bookkeeping-amount">{entry.entryType === "Income" ? "+" : "-"}{money(entry.amount)}</strong></div>
-              <div className="bookkeeping-entry-footer"><span>{entry.entryType}</span><div><button type="button" className="link-btn-subtle" onClick={() => openEdit(entry)}>Edit</button><button type="button" className="link-btn-subtle danger" onClick={() => remove(entry)}>Delete</button></div></div>
+              <div className="bookkeeping-entry-footer"><span>{entry.entryType}</span><div><button type="button" className="link-btn-subtle" onClick={() => openEdit(entry)}>Edit</button><button type="button" className="link-btn-subtle danger" onClick={() => { setDeleteError(""); setDeletingEntry(entry); }}>Delete</button></div></div>
             </article>
           )) : <div className="empty-state"><b>No bookkeeping entries yet</b><span>Add your first income or expense entry to get started.</span></div>}
         </div>
       </Panel>
+
+      <ConfirmDeleteModal
+        open={Boolean(deletingEntry)}
+        title="Delete Bookkeeping Record"
+        message={`Are you sure you want to delete bookkeeping entry "${deletingEntry?.description}" (${deletingEntry ? money(deletingEntry.amount) : ""})? This action cannot be undone.`}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => {
+          setDeletingEntry(null);
+          setDeleteError("");
+        }}
+        loading={deleteLoading}
+        error={deleteError}
+      />
     </>
   );
 }

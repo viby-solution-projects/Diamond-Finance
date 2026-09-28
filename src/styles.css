@@ -2923,15 +2923,51 @@ td b {
 }
 
 .link-btn-subtle {
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 600;
   color: var(--blue);
   background: none;
   border: none;
-  padding: 2px 4px;
+  padding: 6px 8px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  border-radius: 4px;
+}
+
+.link-btn-subtle:hover {
+  background: var(--blue-soft);
 }
 
 .link-btn-subtle.danger {
   color: #d04f59;
 }
+
+.link-btn-subtle.danger:hover {
+  background: #fff4f5;
+}
+
+.dot-sep {
+  color: var(--line);
+  user-select: none;
+}
+
+.confirm-delete-modal-card {
+  width: 100%;
+  max-width: 440px;
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--line);
+  animation: modalPop 0.2s ease-out;
+}
+
+@media (max-width: 480px) {
+  .confirm-delete-modal-card {
+    max-width: calc(100vw - 24px);
+    margin: 12px;
+  }
+}
+
