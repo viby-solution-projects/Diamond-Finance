@@ -44,6 +44,8 @@ import {
   authGetSession,
   authResetPasswordForEmail,
   authUpdatePassword,
+  authChangePassword,
+  updateCurrentUserProfile,
   updateProfile,
 } from "./data/supabaseClient";
 import {
@@ -106,16 +108,24 @@ function navigate(path) {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
+function sanitizeCsvCell(value) {
+  if (value === null || value === undefined) return "";
+  let str = String(value);
+  // Neutralize CSV / Spreadsheet Formula Injection (=, +, -, @, tab \t, CR \r)
+  if (/^[=+\-@\t\r]/.test(str)) {
+    str = `'${str}`;
+  }
+  return str.replaceAll('"', '""');
+}
+
 function downloadCsv(filename, headers, rows) {
-  const csv = [headers, ...rows]
-    .map((row) =>
-      row
-        .map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`)
-        .join(","),
-    )
+  const sanitizedHeaders = headers.map(sanitizeCsvCell);
+  const sanitizedRows = rows.map((row) => row.map(sanitizeCsvCell));
+  const csv = [sanitizedHeaders, ...sanitizedRows]
+    .map((row) => row.map((v) => `"${v}"`).join(","))
     .join("\n");
   const link = document.createElement("a");
-  link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
   link.download = filename;
   link.click();
   URL.revokeObjectURL(link.href);
@@ -545,6 +555,7 @@ function App() {
         setTheme,
         toggleTheme,
         setProfile,
+        handleLogout,
         addTransaction,
         updateTransaction,
         deleteTransaction,
@@ -4507,107 +4518,30 @@ function Bookkeeping({ onNavigate }) {
   );
 }
 
-function ProfilePage({ onNavigate }) {
-  const { user, profile, setProfile } = useData();
-  const [fullName, setFullName] = useState(profile?.full_name || "");
-  const [saving, setSaving] = useState(false);
-  const [savedNotice, setSavedNotice] = useState(false);
-  const [error, setError] = useState("");
-  const displayName = profile?.full_name || user?.email || "User";
-  const initials = (profile?.full_name || user?.email || "U")
-    .split(/\s+|@/)
-    .filter(Boolean)
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase() || "U";
 
-  useEffect(() => {
-    setFullName(profile?.full_name || "");
-  }, [profile?.full_name]);
-
-  const handleSave = async (event) => {
-    event.preventDefault();
-    setError("");
-    setSaving(true);
-    try {
-      const trimmedName = fullName.trim();
-      if (!user?.id) throw new Error("Unable to identify the current account.");
-      await updateProfile(user.id, { full_name: trimmedName });
-      setProfile({ ...profile, full_name: trimmedName });
-      setSavedNotice(true);
-      setTimeout(() => setSavedNotice(false), 3500);
-    } catch (err) {
-      console.error("Profile save failed:", err);
-      setError(err?.message || "Unable to save profile changes. Please try again.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <>
-      <PageHeader
-        backTo="/"
-        backLabel="Back to Dashboard"
-        onNavigate={onNavigate}
-        eyebrow="Workspace"
-        title="Profile"
-        description="Manage your personal account information."
-      />
-      {savedNotice && (
-        <div className="notice" role="status" style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
-          <CheckCircle2 size={16} color="var(--green)" />
-          <span>Profile saved successfully.</span>
-        </div>
-      )}
-      {error && (
-        <div className="login-error-banner" role="alert" style={{ marginBottom: "16px" }}>
-          <AlertCircle size={16} />
-          <span>{error}</span>
-        </div>
-      )}
-      <div className="settings-page profile-page">
-        <section className="settings-section">
-          <div className="settings-section-head"><h2>Personal information</h2></div>
-          <form className="settings-field-grid" onSubmit={handleSave}>
-            <div style={{ display: "flex", alignItems: "center", gap: "12px", gridColumn: "1/-1", padding: "8px 0" }}>
-              <div className="avatar" style={{ width: "42px", height: "42px", fontSize: "14px" }}>{initials}</div>
-              <div>
-                <strong style={{ fontSize: "14px" }}>{displayName}</strong>
-                <small style={{ display: "block", color: "var(--muted)" }}>{user?.email || "Not available"}</small>
-              </div>
-            </div>
-            <label className="settings-field">
-              <span>Full name</span>
-              <input value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Your name" />
-            </label>
-            <label className="settings-field">
-              <span>Email address</span>
-              <input value={user?.email || "Not available"} readOnly />
-            </label>
-            <div style={{ gridColumn: "1/-1", display: "flex", justifyContent: "flex-end" }}>
-              <Button type="submit" disabled={saving}>{saving ? "Saving..." : "Save changes"}</Button>
-            </div>
-          </form>
-        </section>
-        <section className="settings-section">
-          <div className="settings-section-head"><h2>Account</h2></div>
-          <div className="settings-field-grid">
-            <div className="settings-field"><span>Account email</span><strong>{user?.email || "Not available"}</strong></div>
-            <div className="settings-field"><span>Account status</span><strong>{profile?.status || "active"}</strong></div>
-          </div>
-        </section>
-      </div>
-    </>
-  );
-}
 
 function SettingsPage({ onNavigate }) {
-  const { theme, setTheme } = useData();
+  const { theme, setTheme, user, profile, setProfile, handleLogout } = useData();
   const [settings, setSettings] = useState(loadSettings);
   const [savedNotice, setSavedNotice] = useState(false);
   const [error, setError] = useState("");
+
+  // Profile Name Edit State
+  const [fullName, setFullName] = useState(() => profile?.full_name || user?.user_metadata?.full_name || "");
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileSuccess, setProfileSuccess] = useState("");
+  const [profileError, setProfileError] = useState("");
+
+  // Change Password State
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [pwdLoading, setPwdLoading] = useState(false);
+  const [pwdSuccess, setPwdSuccess] = useState("");
+  const [pwdError, setPwdError] = useState("");
 
   useEffect(() => {
     const nextSettings = loadSettings();
@@ -4616,7 +4550,10 @@ function SettingsPage({ onNavigate }) {
       businessName: nextSettings.businessName || "Diamond Broker",
       address: nextSettings.address || "",
     });
-  }, []);
+    if (profile?.full_name) {
+      setFullName(profile.full_name);
+    }
+  }, [profile?.full_name]);
 
   const setField = (event) => {
     const { name, value, checked, type } = event.target;
@@ -4643,6 +4580,71 @@ function SettingsPage({ onNavigate }) {
     }
   };
 
+  const handleUpdateProfileName = async (e) => {
+    e.preventDefault();
+    setProfileError("");
+    setProfileSuccess("");
+    if (!fullName.trim()) {
+      setProfileError("Please enter your name.");
+      return;
+    }
+
+    setProfileSaving(true);
+    try {
+      const res = await updateCurrentUserProfile({ fullName: fullName.trim() });
+      if (res?.profile) {
+        setProfile(res.profile);
+      }
+      setProfileSuccess("Account profile name updated successfully.");
+      setTimeout(() => setProfileSuccess(""), 4000);
+    } catch (err) {
+      setProfileError(err?.message || "Unable to update account name.");
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const handleChangePasswordSubmit = async (e) => {
+    e.preventDefault();
+    setPwdError("");
+    setPwdSuccess("");
+
+    if (!currentPassword.trim()) {
+      setPwdError("Please enter your current password.");
+      return;
+    }
+    if (!newPassword.trim()) {
+      setPwdError("Please enter a new password.");
+      return;
+    }
+    if (newPassword.trim().length < 6) {
+      setPwdError("New password must be at least 6 characters long.");
+      return;
+    }
+    if (newPassword.trim() !== confirmPassword.trim()) {
+      setPwdError("New password and confirmation do not match.");
+      return;
+    }
+
+    setPwdLoading(true);
+    try {
+      await authChangePassword({
+        currentPassword: currentPassword.trim(),
+        newPassword: newPassword.trim(),
+        confirmPassword: confirmPassword.trim(),
+      });
+      setPwdSuccess("Password changed successfully.");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setTimeout(() => setPwdSuccess(""), 4500);
+    } catch (err) {
+      setPwdError(err?.message || "Failed to update password.");
+    } finally {
+      setPwdLoading(false);
+    }
+  };
+
   return (
     <>
       <PageHeader
@@ -4650,8 +4652,8 @@ function SettingsPage({ onNavigate }) {
         backLabel="Back to Dashboard"
         onNavigate={onNavigate}
         eyebrow="Workspace"
-        title="Settings"
-        description="Manage your account, theme appearance, and business details."
+        title="Settings & Account"
+        description="Manage your account profile, login security, theme appearance, and business details."
         action={<Button onClick={handleSave}>Save changes</Button>}
       />
 
@@ -4670,6 +4672,195 @@ function SettingsPage({ onNavigate }) {
       )}
 
       <div className="settings-page">
+        {/* SECTION 1: ACCOUNT PROFILE */}
+        <section className="settings-section">
+          <div className="settings-section-head">
+            <h2>Account Profile</h2>
+          </div>
+          <form onSubmit={handleUpdateProfileName}>
+            {profileSuccess && (
+              <div className="notice" style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+                <CheckCircle2 size={16} color="var(--green)" />
+                <span>{profileSuccess}</span>
+              </div>
+            )}
+            {profileError && (
+              <div className="login-error-banner" style={{ marginBottom: "12px" }} role="alert">
+                <AlertCircle size={16} />
+                <span>{profileError}</span>
+              </div>
+            )}
+            <div className="settings-field-grid">
+              <div className="settings-field">
+                <span>Account Email</span>
+                <input
+                  type="email"
+                  value={user?.email || ""}
+                  disabled
+                  style={{
+                    background: "var(--line-subtle)",
+                    color: "var(--ink)",
+                    cursor: "not-allowed",
+                    fontWeight: 600,
+                  }}
+                />
+                <small>Authenticated Diamond Finance login account (Read-only).</small>
+              </div>
+
+              <div className="settings-field">
+                <span>Access Level</span>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    padding: "9px 12px",
+                    borderRadius: "8px",
+                    background: "var(--blue-soft)",
+                    border: "1px solid rgba(35, 100, 232, 0.2)",
+                    color: "var(--blue)",
+                    fontWeight: 700,
+                    fontSize: "13px",
+                    height: "40px",
+                  }}
+                >
+                  <Lock size={14} />
+                  <span>Super Admin (Full Workspace Access)</span>
+                </div>
+                <small>All authorized Diamond Finance accounts have full permissions.</small>
+              </div>
+
+              <label className="settings-field full-width-field">
+                <span>Profile Name</span>
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <input
+                    type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="e.g. HK Chag"
+                    style={{ flex: 1 }}
+                  />
+                  <Button
+                    type="submit"
+                    disabled={profileSaving}
+                    icon={null}
+                    style={{ minWidth: "120px", justifyContent: "center" }}
+                  >
+                    {profileSaving ? "Saving..." : "Save Name"}
+                  </Button>
+                </div>
+                <small>Displayed on top bar and audit activity records.</small>
+              </label>
+            </div>
+          </form>
+        </section>
+
+        {/* SECTION 2: CHANGE PASSWORD */}
+        <section className="settings-section">
+          <div className="settings-section-head">
+            <h2>Change Password</h2>
+          </div>
+          <form onSubmit={handleChangePasswordSubmit} noValidate>
+            {pwdSuccess && (
+              <div className="notice" style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" }}>
+                <CheckCircle2 size={16} color="var(--green)" />
+                <span>{pwdSuccess}</span>
+              </div>
+            )}
+            {pwdError && (
+              <div className="login-error-banner" style={{ marginBottom: "14px" }} role="alert">
+                <AlertCircle size={16} />
+                <span>{pwdError}</span>
+              </div>
+            )}
+
+            <div className="settings-field-grid">
+              <div className="settings-field full-width-field">
+                <span>Current Password</span>
+                <div className="login-password-wrap" style={{ width: "100%" }}>
+                  <input
+                    type={showCurrentPassword ? "text" : "password"}
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder="Enter your current password"
+                    autoComplete="current-password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle-btn"
+                    onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                    aria-label={showCurrentPassword ? "Hide password" : "Show password"}
+                    tabIndex={-1}
+                  >
+                    {showCurrentPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="settings-field">
+                <span>New Password</span>
+                <div className="login-password-wrap" style={{ width: "100%" }}>
+                  <input
+                    type={showNewPassword ? "text" : "password"}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Minimum 6 characters"
+                    autoComplete="new-password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle-btn"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    aria-label={showNewPassword ? "Hide password" : "Show password"}
+                    tabIndex={-1}
+                  >
+                    {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                <small>Must be at least 6 characters long.</small>
+              </div>
+
+              <div className="settings-field">
+                <span>Confirm New Password</span>
+                <div className="login-password-wrap" style={{ width: "100%" }}>
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Re-enter new password"
+                    autoComplete="new-password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle-btn"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                    tabIndex={-1}
+                  >
+                    {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                <small>Passwords must match exactly.</small>
+              </div>
+
+              <div className="settings-field full-width-field" style={{ marginTop: "4px" }}>
+                <Button
+                  type="submit"
+                  disabled={pwdLoading}
+                  icon={null}
+                  style={{ width: "fit-content", minWidth: "160px", justifyContent: "center" }}
+                >
+                  {pwdLoading ? "Updating Password..." : "Update Password"}
+                </Button>
+              </div>
+            </div>
+          </form>
+        </section>
+
+        {/* SECTION 3: APPEARANCE & THEME */}
         <section className="settings-section">
           <div className="settings-section-head">
             <h2>Appearance & Theme</h2>
@@ -4727,6 +4918,7 @@ function SettingsPage({ onNavigate }) {
           </div>
         </section>
 
+        {/* SECTION 4: BUSINESS PROFILE */}
         <section className="settings-section">
           <div className="settings-section-head">
             <h2>Business</h2>
@@ -4753,9 +4945,48 @@ function SettingsPage({ onNavigate }) {
           </div>
         </section>
 
+        {/* SECTION 5: LOGOUT / SESSION */}
+        <section className="settings-section">
+          <div className="settings-section-head">
+            <h2>Session & Security</h2>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0" }}>
+            <div>
+              <b style={{ display: "block", color: "var(--ink)", fontSize: "14px", marginBottom: "4px" }}>
+                Log out of Diamond Finance
+              </b>
+              <small style={{ color: "var(--muted)" }}>
+                End your active authenticated session on this browser.
+              </small>
+            </div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              style={{
+                background: "#fef2f2",
+                color: "#dc2626",
+                border: "1px solid #fecaca",
+                padding: "9px 18px",
+                borderRadius: "8px",
+                fontWeight: 700,
+                fontSize: "13px",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+              }}
+            >
+              Sign Out
+            </button>
+          </div>
+        </section>
       </div>
     </>
   );
+}
+
+function ProfilePage({ onNavigate }) {
+  return <SettingsPage onNavigate={onNavigate} />;
 }
 
 function LoginPage({ onLoginSuccess }) {
@@ -4940,7 +5171,7 @@ function LoginPage({ onLoginSuccess }) {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="e.g. heyhkchag@gmail.com"
+                placeholder="e.g. name@diamond.com"
                 autoComplete="email"
                 required
                 disabled={loading}
@@ -5010,7 +5241,7 @@ function LoginPage({ onLoginSuccess }) {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="e.g. heyhkchag@gmail.com"
+                placeholder="e.g. name@diamond.com"
                 autoComplete="email"
                 required
                 disabled={loading}

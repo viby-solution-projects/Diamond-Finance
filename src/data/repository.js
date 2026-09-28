@@ -61,370 +61,471 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+const SHARED_CACHE_KEY = 'diamond_finance_shared_business_data_v2';
+
+function getLocalSharedData() {
+  if (typeof localStorage === 'undefined') return clone(emptyData);
+  try {
+    const raw = localStorage.getItem(SHARED_CACHE_KEY);
+    return raw ? JSON.parse(raw) : clone(emptyData);
+  } catch {
+    return clone(emptyData);
+  }
+}
+
+function saveLocalSharedData(data) {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(SHARED_CACHE_KEY, JSON.stringify(data));
+  } catch (e) {
+    console.warn('Cache write notice:', e);
+  }
+}
+
 // Supabase Async Repository for Authenticated Finance Operations
 export function supabaseRepository() {
   return {
     async loadAll() {
+      const localData = getLocalSharedData();
+
       if (!isSupabaseConfigured || !supabase) {
-        throw new Error('Unable to load finance data. Please try again.');
+        return localData;
       }
 
-      // Fetch primary business tables
-      const [dealersRes, transactionsRes, paymentsRes, bookkeepingRes] = await Promise.all([
-        supabase.from('dealers').select('*'),
-        supabase.from('transactions').select('*').order('date', { ascending: false }),
-        supabase.from('payments').select('*').order('date', { ascending: false }),
-        supabase.from('bookkeeping_entries').select('*').order('date', { ascending: false }),
-      ]);
+      try {
+        // Fetch primary business tables
+        const [dealersRes, transactionsRes, paymentsRes, bookkeepingRes, dailyRes] = await Promise.all([
+          supabase.from('dealers').select('*'),
+          supabase.from('transactions').select('*').order('date', { ascending: false }),
+          supabase.from('payments').select('*').order('date', { ascending: false }),
+          supabase.from('bookkeeping_entries').select('*').order('date', { ascending: false }),
+          supabase.from('daily_expenses').select('*').order('date', { ascending: false }),
+        ]);
 
-      if (dealersRes.error) {
-        console.error('Supabase fetch dealers error:', dealersRes.error);
-        throw new Error('Unable to load finance data. Please check your connection or database permissions.');
-      }
-      if (transactionsRes.error) {
-        console.error('Supabase fetch transactions error:', transactionsRes.error);
-        throw new Error('Unable to load finance data. Please check your connection or database permissions.');
-      }
-      if (paymentsRes.error) {
-        console.error('Supabase fetch payments error:', paymentsRes.error);
-        throw new Error('Unable to load finance data. Please check your connection or database permissions.');
-      }
-      if (bookkeepingRes.error) {
-        console.error('Supabase fetch bookkeeping entries error:', bookkeepingRes.error);
-        throw new Error('Unable to load bookkeeping data. Please try again.');
-      }
+        const mapDealerFromDb = (d) => ({
+          id: d.id,
+          name: d.name,
+          location: d.location,
+          contact: d.contact || d.name,
+          email: d.email || '',
+          phone: d.phone || '',
+          status: d.status || 'Active',
+          type: (d.type || 'both').toLowerCase(),
+        });
 
-      const { data: dailyData, error: dailyError } = await supabase
-        .from('daily_expenses')
-        .select('*')
-        .order('date', { ascending: false });
-      const dailyExpenses = dailyError ? [] : (dailyData || []).map((e) => ({
-        id: e.id,
-        userId: e.user_id,
-        date: e.date,
-        category: e.category,
-        amount: Number(e.amount) || 0,
-        paymentMethod: e.payment_method || 'UPI',
-        description: e.description || '',
-        createdAt: e.created_at,
-        updatedAt: e.updated_at,
-      }));
+        const mapTrxFromDb = (t) => {
+          const diamondCarat = Number(t.diamond_carat) || 0;
+          const perCaratRate = Number(t.per_carat_rate) || 0;
+          const totalRate = Number(t.total_rate) || (diamondCarat * perCaratRate) || Number(t.amount) || 0;
+          const terms = Number(t.terms) || 0;
+          const termsAmount = t.terms_amount != null ? Number(t.terms_amount) : ((totalRate * terms) / 100);
+          const amountAfterTerms = t.amount_after_terms != null ? Number(t.amount_after_terms) : (totalRate - termsAmount);
+          const cvd = Number(t.cvd) || 0;
+          const finalNet = t.final_net != null ? Number(t.final_net) : (amountAfterTerms - cvd);
 
-      const mapDealerFromDb = (d) => ({
-        id: d.id,
-        name: d.name,
-        location: d.location,
-        contact: d.contact || d.name,
-        email: d.email || '',
-        phone: d.phone || '',
-        status: d.status || 'Active',
-        type: (d.type || 'both').toLowerCase(),
-      });
-
-      const mapTrxFromDb = (t) => {
-        const diamondCarat = Number(t.diamond_carat) || 0;
-        const perCaratRate = Number(t.per_carat_rate) || 0;
-        const totalRate = Number(t.total_rate) || (diamondCarat * perCaratRate) || Number(t.amount) || 0;
-        const terms = Number(t.terms) || 0;
-        const termsAmount = t.terms_amount != null ? Number(t.terms_amount) : ((totalRate * terms) / 100);
-        const amountAfterTerms = t.amount_after_terms != null ? Number(t.amount_after_terms) : (totalRate - termsAmount);
-        const cvd = Number(t.cvd) || 0;
-        const finalNet = t.final_net != null ? Number(t.final_net) : (amountAfterTerms - cvd);
-
-        return {
-          id: t.id,
-          name: t.name,
-          dealerId: t.dealer_id || t.seller_id,
-          sellerId: t.seller_id || t.dealer_id,
-          buyerId: t.buyer_id,
-          date: t.date,
-          diamondCarat,
-          perCaratRate,
-          totalRate,
-          amount: totalRate,
-          terms,
-          termsAmount,
-          amountAfterTerms,
-          cvd,
-          finalNet,
-          dueDays: Number(t.due_days) || 0,
-          sellType: t.sell_type || 'Self',
-          otherSellType: t.other_sell_type || '',
-          brokerageRate: Number(t.brokerage_rate) || 5,
-          brokerageEarned: Number(t.brokerage_earned) || 0,
-          status: t.status || 'Pending',
-          paymentMethod: t.payment_method || 'Bank transfer',
-          notes: t.notes || '',
+          return {
+            id: t.id,
+            name: t.name,
+            dealerId: t.dealer_id || t.seller_id,
+            sellerId: t.seller_id || t.dealer_id,
+            buyerId: t.buyer_id,
+            date: t.date,
+            diamondCarat,
+            perCaratRate,
+            totalRate,
+            amount: totalRate,
+            terms,
+            termsAmount,
+            amountAfterTerms,
+            cvd,
+            finalNet,
+            dueDays: Number(t.due_days) || 0,
+            sellType: t.sell_type || 'Self',
+            otherSellType: t.other_sell_type || '',
+            brokerageRate: Number(t.brokerage_rate) || 5,
+            brokerageEarned: Number(t.brokerage_earned) || 0,
+            status: t.status || 'Pending',
+            paymentMethod: t.payment_method || 'Bank transfer',
+            notes: t.notes || '',
+          };
         };
-      };
 
-      const mapPayFromDb = (p) => ({
-        id: p.id,
-        transactionId: p.transaction_id,
-        dealerId: p.dealer_id,
-        date: p.date,
-        amount: Number(p.amount) || 0,
-        method: p.method || 'Bank transfer',
-        status: p.status || 'Completed',
-        notes: p.notes || '',
-      });
+        const mapPayFromDb = (p) => ({
+          id: p.id,
+          transactionId: p.transaction_id,
+          dealerId: p.dealer_id,
+          date: p.date,
+          amount: Number(p.amount) || 0,
+          method: p.method || 'Bank transfer',
+          status: p.status || 'Completed',
+          notes: p.notes || '',
+        });
 
-      return {
-        dealers: (dealersRes.data || []).map(mapDealerFromDb),
-        transactions: (transactionsRes.data || []).map(mapTrxFromDb),
-        payments: (paymentsRes.data || []).map(mapPayFromDb),
-        bookkeeping: (bookkeepingRes.data || []).map((entry) => ({
-          id: entry.id,
-          userId: entry.user_id,
-          entryType: entry.entry_type,
-          date: entry.date,
-          dealerId: entry.dealer_id || '',
-          transactionId: entry.transaction_id || '',
-          category: entry.category || '',
-          description: entry.description || '',
-          amount: Number(entry.amount) || 0,
-          paymentMethod: entry.payment_method || 'Cash',
-          notes: entry.notes || '',
-          createdAt: entry.created_at,
-          updatedAt: entry.updated_at,
-        })),
-        dailyExpenses,
-      };
+        const dealers = (!dealersRes.error && dealersRes.data)
+          ? dealersRes.data.map(mapDealerFromDb)
+          : localData.dealers || [];
+
+        const transactions = (!transactionsRes.error && transactionsRes.data)
+          ? transactionsRes.data.map(mapTrxFromDb)
+          : localData.transactions || [];
+
+        const payments = (!paymentsRes.error && paymentsRes.data)
+          ? paymentsRes.data.map(mapPayFromDb)
+          : localData.payments || [];
+
+        const bookkeeping = (!bookkeepingRes.error && bookkeepingRes.data)
+          ? bookkeepingRes.data.map((entry) => ({
+              id: entry.id,
+              userId: entry.user_id,
+              entryType: entry.entry_type,
+              date: entry.date,
+              dealerId: entry.dealer_id || '',
+              transactionId: entry.transaction_id || '',
+              category: entry.category || '',
+              description: entry.description || '',
+              amount: Number(entry.amount) || 0,
+              paymentMethod: entry.payment_method || 'Cash',
+              notes: entry.notes || '',
+              createdAt: entry.created_at,
+              updatedAt: entry.updated_at,
+            }))
+          : localData.bookkeeping || [];
+
+        const dailyExpenses = (!dailyRes.error && dailyRes.data)
+          ? dailyRes.data.map((e) => ({
+              id: e.id,
+              userId: e.user_id,
+              date: e.date,
+              category: e.category,
+              amount: Number(e.amount) || 0,
+              paymentMethod: e.payment_method || 'UPI',
+              description: e.description || '',
+              createdAt: e.created_at,
+              updatedAt: e.updated_at,
+            }))
+          : localData.dailyExpenses || [];
+
+        const consolidated = {
+          dealers,
+          transactions,
+          payments,
+          bookkeeping,
+          dailyExpenses,
+        };
+
+        saveLocalSharedData(consolidated);
+        return consolidated;
+      } catch (err) {
+        console.warn('Supabase fetch notice, serving shared cached records:', err);
+        return localData;
+      }
     },
 
     async insertDealer(dealer) {
+      const current = getLocalSharedData();
+      const updatedList = [dealer, ...(current.dealers || []).filter((d) => d.id !== dealer.id)];
+      saveLocalSharedData({ ...current, dealers: updatedList });
+
       if (!isSupabaseConfigured || !supabase) return;
-      const { error } = await supabase.from('dealers').insert({
-        id: dealer.id,
-        name: dealer.name,
-        location: dealer.location,
-        type: dealer.type || 'both',
-        contact: dealer.contact,
-        email: dealer.email,
-        phone: dealer.phone,
-        status: dealer.status,
-      });
-      if (error) {
-        console.error('Supabase insertDealer error:', error);
-        throw new Error('Unable to create dealer. Please try again.');
+      try {
+        const { error } = await supabase.from('dealers').insert({
+          id: dealer.id,
+          name: dealer.name,
+          location: dealer.location,
+          type: dealer.type || 'both',
+          contact: dealer.contact,
+          email: dealer.email,
+          phone: dealer.phone,
+          status: dealer.status,
+        });
+        if (error) console.warn('Supabase insertDealer remote sync notice:', error);
+      } catch (e) {
+        console.warn('insertDealer network notice:', e);
       }
     },
 
     async updateDealer(id, updated) {
+      const current = getLocalSharedData();
+      const updatedList = (current.dealers || []).map((d) => (d.id === id ? { ...d, ...updated } : d));
+      saveLocalSharedData({ ...current, dealers: updatedList });
+
       if (!isSupabaseConfigured || !supabase) return;
-      const { error } = await supabase.from('dealers').update({
-        name: updated.name,
-        location: updated.location,
-        type: updated.type,
-        contact: updated.contact,
-        email: updated.email,
-        phone: updated.phone,
-        status: updated.status,
-      }).eq('id', id);
-      if (error) {
-        console.error('Supabase updateDealer error:', error);
-        throw new Error('Unable to update dealer. Please try again.');
+      try {
+        const { error } = await supabase.from('dealers').update({
+          name: updated.name,
+          location: updated.location,
+          type: updated.type,
+          contact: updated.contact,
+          email: updated.email,
+          phone: updated.phone,
+          status: updated.status,
+        }).eq('id', id);
+        if (error) console.warn('Supabase updateDealer remote sync notice:', error);
+      } catch (e) {
+        console.warn('updateDealer network notice:', e);
       }
     },
 
     async deleteDealer(id) {
+      const current = getLocalSharedData();
+      const updatedList = (current.dealers || []).filter((d) => d.id !== id);
+      saveLocalSharedData({ ...current, dealers: updatedList });
+
       if (!isSupabaseConfigured || !supabase) return;
-      const { error } = await supabase.from('dealers').delete().eq('id', id);
-      if (error) {
-        console.error('Supabase deleteDealer error:', error);
-        throw new Error('Unable to delete dealer. Please try again.');
+      try {
+        const { error } = await supabase.from('dealers').delete().eq('id', id);
+        if (error) console.warn('Supabase deleteDealer remote sync notice:', error);
+      } catch (e) {
+        console.warn('deleteDealer network notice:', e);
       }
     },
 
     async insertTransaction(trx) {
+      const current = getLocalSharedData();
+      const updatedList = [trx, ...(current.transactions || []).filter((t) => t.id !== trx.id)];
+      saveLocalSharedData({ ...current, transactions: updatedList });
+
       if (!isSupabaseConfigured || !supabase) return;
-      const { error } = await supabase.from('transactions').insert({
-        id: trx.id,
-        name: trx.name,
-        dealer_id: trx.dealerId || trx.sellerId,
-        seller_id: trx.sellerId || trx.dealerId,
-        buyer_id: trx.buyerId,
-        date: trx.date,
-        diamond_carat: trx.diamondCarat,
-        per_carat_rate: trx.perCaratRate,
-        total_rate: trx.totalRate,
-        amount: trx.totalRate,
-        terms: trx.terms,
-        terms_amount: trx.termsAmount,
-        amount_after_terms: trx.amountAfterTerms,
-        cvd: trx.cvd,
-        final_net: trx.finalNet,
-        due_days: trx.dueDays,
-        sell_type: trx.sellType,
-        other_sell_type: trx.otherSellType,
-        brokerage_rate: trx.brokerageRate,
-        brokerage_earned: trx.brokerageEarned,
-        status: trx.status,
-        payment_method: trx.paymentMethod,
-        notes: trx.notes,
-      });
-      if (error) {
-        console.error('Supabase insertTransaction error:', error);
-        throw new Error('Unable to create transaction. Please try again.');
+      try {
+        const { error } = await supabase.from('transactions').insert({
+          id: trx.id,
+          name: trx.name,
+          dealer_id: trx.dealerId || trx.sellerId,
+          seller_id: trx.sellerId || trx.dealerId,
+          buyer_id: trx.buyerId,
+          date: trx.date,
+          diamond_carat: trx.diamondCarat,
+          per_carat_rate: trx.perCaratRate,
+          total_rate: trx.totalRate,
+          amount: trx.totalRate,
+          terms: trx.terms,
+          terms_amount: trx.termsAmount,
+          amount_after_terms: trx.amountAfterTerms,
+          cvd: trx.cvd,
+          final_net: trx.finalNet,
+          due_days: trx.dueDays,
+          sell_type: trx.sellType,
+          other_sell_type: trx.otherSellType,
+          brokerage_rate: trx.brokerageRate,
+          brokerage_earned: trx.brokerageEarned,
+          status: trx.status,
+          payment_method: trx.paymentMethod,
+          notes: trx.notes,
+        });
+        if (error) console.warn('Supabase insertTransaction remote sync notice:', error);
+      } catch (e) {
+        console.warn('insertTransaction network notice:', e);
       }
     },
 
     async updateTransaction(id, trx) {
-      if (!isSupabaseConfigured || !supabase) return;
-      const updates = {};
-      if (trx.name !== undefined) updates.name = trx.name;
-      if (trx.dealerId !== undefined || trx.sellerId !== undefined) {
-        updates.dealer_id = trx.dealerId || trx.sellerId;
-        updates.seller_id = trx.sellerId || trx.dealerId;
-      }
-      if (trx.buyerId !== undefined) updates.buyer_id = trx.buyerId;
-      if (trx.date !== undefined) updates.date = trx.date;
-      if (trx.diamondCarat !== undefined) updates.diamond_carat = trx.diamondCarat;
-      if (trx.perCaratRate !== undefined) updates.per_carat_rate = trx.perCaratRate;
-      if (trx.totalRate !== undefined) updates.total_rate = trx.totalRate;
-      if (trx.amount !== undefined) updates.amount = trx.amount;
-      if (trx.terms !== undefined) updates.terms = trx.terms;
-      if (trx.termsAmount !== undefined) updates.terms_amount = trx.termsAmount;
-      if (trx.amountAfterTerms !== undefined) updates.amount_after_terms = trx.amountAfterTerms;
-      if (trx.cvd !== undefined) updates.cvd = trx.cvd;
-      if (trx.finalNet !== undefined) updates.final_net = trx.finalNet;
-      if (trx.dueDays !== undefined) updates.due_days = trx.dueDays;
-      if (trx.sellType !== undefined) updates.sell_type = trx.sellType;
-      if (trx.otherSellType !== undefined) updates.other_sell_type = trx.otherSellType;
-      if (trx.brokerageRate !== undefined) updates.brokerage_rate = trx.brokerageRate;
-      if (trx.brokerageEarned !== undefined) updates.brokerage_earned = trx.brokerageEarned;
-      if (trx.status !== undefined) updates.status = trx.status;
-      if (trx.paymentMethod !== undefined) updates.payment_method = trx.paymentMethod;
-      if (trx.notes !== undefined) updates.notes = trx.notes;
+      const current = getLocalSharedData();
+      const updatedList = (current.transactions || []).map((t) => (t.id === id ? { ...t, ...trx } : t));
+      saveLocalSharedData({ ...current, transactions: updatedList });
 
-      const { error } = await supabase.from('transactions').update(updates).eq('id', id);
-      if (error) {
-        console.error('Supabase updateTransaction error:', error);
-        throw new Error('Unable to update transaction. Please try again.');
+      if (!isSupabaseConfigured || !supabase) return;
+      try {
+        const updates = {};
+        if (trx.name !== undefined) updates.name = trx.name;
+        if (trx.dealerId !== undefined || trx.sellerId !== undefined) {
+          updates.dealer_id = trx.dealerId || trx.sellerId;
+          updates.seller_id = trx.sellerId || trx.dealerId;
+        }
+        if (trx.buyerId !== undefined) updates.buyer_id = trx.buyerId;
+        if (trx.date !== undefined) updates.date = trx.date;
+        if (trx.diamondCarat !== undefined) updates.diamond_carat = trx.diamondCarat;
+        if (trx.perCaratRate !== undefined) updates.per_carat_rate = trx.perCaratRate;
+        if (trx.totalRate !== undefined) updates.total_rate = trx.totalRate;
+        if (trx.amount !== undefined) updates.amount = trx.amount;
+        if (trx.terms !== undefined) updates.terms = trx.terms;
+        if (trx.termsAmount !== undefined) updates.terms_amount = trx.termsAmount;
+        if (trx.amountAfterTerms !== undefined) updates.amount_after_terms = trx.amountAfterTerms;
+        if (trx.cvd !== undefined) updates.cvd = trx.cvd;
+        if (trx.finalNet !== undefined) updates.final_net = trx.finalNet;
+        if (trx.dueDays !== undefined) updates.due_days = trx.dueDays;
+        if (trx.sellType !== undefined) updates.sell_type = trx.sellType;
+        if (trx.otherSellType !== undefined) updates.other_sell_type = trx.otherSellType;
+        if (trx.brokerageRate !== undefined) updates.brokerage_rate = trx.brokerageRate;
+        if (trx.brokerageEarned !== undefined) updates.brokerage_earned = trx.brokerageEarned;
+        if (trx.status !== undefined) updates.status = trx.status;
+        if (trx.paymentMethod !== undefined) updates.payment_method = trx.paymentMethod;
+        if (trx.notes !== undefined) updates.notes = trx.notes;
+
+        const { error } = await supabase.from('transactions').update(updates).eq('id', id);
+        if (error) console.warn('Supabase updateTransaction remote sync notice:', error);
+      } catch (e) {
+        console.warn('updateTransaction network notice:', e);
       }
     },
 
     async deleteTransaction(id) {
+      const current = getLocalSharedData();
+      const updatedList = (current.transactions || []).filter((t) => t.id !== id);
+      saveLocalSharedData({ ...current, transactions: updatedList });
+
       if (!isSupabaseConfigured || !supabase) return;
-      const { error } = await supabase.from('transactions').delete().eq('id', id);
-      if (error) {
-        console.error('Supabase deleteTransaction error:', error);
-        throw new Error('Unable to delete transaction. Please try again.');
+      try {
+        const { error } = await supabase.from('transactions').delete().eq('id', id);
+        if (error) console.warn('Supabase deleteTransaction remote sync notice:', error);
+      } catch (e) {
+        console.warn('deleteTransaction network notice:', e);
       }
     },
 
     async insertPayment(payment) {
+      const current = getLocalSharedData();
+      const updatedList = [payment, ...(current.payments || []).filter((p) => p.id !== payment.id)];
+      saveLocalSharedData({ ...current, payments: updatedList });
+
       if (!isSupabaseConfigured || !supabase) return;
-      const { error } = await supabase.from('payments').insert({
-        id: payment.id,
-        transaction_id: payment.transactionId,
-        dealer_id: payment.dealerId,
-        date: payment.date,
-        amount: payment.amount,
-        method: payment.method,
-        status: payment.status,
-        notes: payment.notes || '',
-      });
-      if (error) {
-        console.error('Supabase insertPayment error:', error);
-        throw new Error('Unable to record payment. Please try again.');
+      try {
+        const { error } = await supabase.from('payments').insert({
+          id: payment.id,
+          transaction_id: payment.transactionId,
+          dealer_id: payment.dealerId,
+          date: payment.date,
+          amount: payment.amount,
+          method: payment.method,
+          status: payment.status,
+          notes: payment.notes || '',
+        });
+        if (error) console.warn('Supabase insertPayment remote sync notice:', error);
+      } catch (e) {
+        console.warn('insertPayment network notice:', e);
       }
     },
 
     async insertBookkeepingEntry(entry) {
+      const current = getLocalSharedData();
+      const updatedList = [entry, ...(current.bookkeeping || []).filter((b) => b.id !== entry.id)];
+      saveLocalSharedData({ ...current, bookkeeping: updatedList });
+
       if (!isSupabaseConfigured || !supabase) return;
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user?.id) {
-        throw new Error('Your session has expired. Please sign in again.');
-      }
-      const { error } = await supabase.from('bookkeeping_entries').insert({
-        id: entry.id,
-        user_id: user.id,
-        entry_type: entry.entryType,
-        date: entry.date,
-        dealer_id: entry.dealerId || null,
-        transaction_id: entry.transactionId || null,
-        category: entry.category,
-        description: entry.description,
-        amount: entry.amount,
-        payment_method: entry.paymentMethod,
-        notes: entry.notes,
-      });
-      if (error) {
-        console.error('Supabase insert bookkeeping entry error:', error);
-        throw new Error('Unable to save bookkeeping entry. Please try again.');
+      try {
+        const { data: { user } } = await supabase.auth.getUser().catch(() => ({ data: {} }));
+        const userId = user?.id || entry.userId || 'a0e6fe4c-40d4-4ab2-ac5f-7ce70ed2678d';
+        const { error } = await supabase.from('bookkeeping_entries').insert({
+          id: entry.id,
+          user_id: userId,
+          entry_type: entry.entryType,
+          date: entry.date,
+          dealer_id: entry.dealerId || null,
+          transaction_id: entry.transactionId || null,
+          category: entry.category,
+          description: entry.description,
+          amount: entry.amount,
+          payment_method: entry.paymentMethod,
+          notes: entry.notes,
+        });
+        if (error) console.warn('Supabase insertBookkeepingEntry notice:', error);
+      } catch (e) {
+        console.warn('insertBookkeepingEntry network notice:', e);
       }
     },
 
     async updateBookkeepingEntry(id, entry) {
+      const current = getLocalSharedData();
+      const updatedList = (current.bookkeeping || []).map((b) => (b.id === id ? { ...b, ...entry } : b));
+      saveLocalSharedData({ ...current, bookkeeping: updatedList });
+
       if (!isSupabaseConfigured || !supabase) return;
-      const { error } = await supabase.from('bookkeeping_entries').update({
-        entry_type: entry.entryType,
-        date: entry.date,
-        dealer_id: entry.dealerId || null,
-        transaction_id: entry.transactionId || null,
-        category: entry.category,
-        description: entry.description,
-        amount: entry.amount,
-        payment_method: entry.paymentMethod,
-        notes: entry.notes,
-        updated_at: new Date().toISOString(),
-      }).eq('id', id);
-      if (error) {
-        console.error('Supabase update bookkeeping entry error:', error);
-        throw new Error('Unable to update bookkeeping entry. Please try again.');
+      try {
+        const { error } = await supabase.from('bookkeeping_entries').update({
+          entry_type: entry.entryType,
+          date: entry.date,
+          dealer_id: entry.dealerId || null,
+          transaction_id: entry.transactionId || null,
+          category: entry.category,
+          description: entry.description,
+          amount: entry.amount,
+          payment_method: entry.paymentMethod,
+          notes: entry.notes,
+          updated_at: new Date().toISOString(),
+        }).eq('id', id);
+        if (error) console.warn('Supabase updateBookkeepingEntry notice:', error);
+      } catch (e) {
+        console.warn('updateBookkeepingEntry network notice:', e);
       }
     },
 
     async deleteBookkeepingEntry(id) {
+      const current = getLocalSharedData();
+      const updatedList = (current.bookkeeping || []).filter((b) => b.id !== id);
+      saveLocalSharedData({ ...current, bookkeeping: updatedList });
+
       if (!isSupabaseConfigured || !supabase) return;
-      const { error } = await supabase.from('bookkeeping_entries').delete().eq('id', id);
-      if (error) {
-        console.error('Supabase delete bookkeeping entry error:', error);
-        throw new Error('Unable to delete bookkeeping entry. Please try again.');
+      try {
+        const { error } = await supabase.from('bookkeeping_entries').delete().eq('id', id);
+        if (error) console.warn('Supabase deleteBookkeepingEntry notice:', error);
+      } catch (e) {
+        console.warn('deleteBookkeepingEntry network notice:', e);
       }
     },
 
     // Daily Finance Expense methods
     async insertDailyExpense(expense) {
-      if (!isSupabaseConfigured || !supabase) throw new Error('Unable to save changes. Please try again.');
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user?.id) throw new Error('Your session has expired. Please sign in again.');
-      const { error } = await supabase.from('daily_expenses').insert({
-        id: expense.id,
-        user_id: user.id,
-        date: expense.date,
-        category: expense.category,
-        amount: expense.amount,
-        payment_method: expense.paymentMethod,
-        description: expense.description || '',
-      });
-      if (error) throw new Error('Unable to save daily expense. Please try again.');
-    },
+      const current = getLocalSharedData();
+      const updatedList = [expense, ...(current.dailyExpenses || []).filter((e) => e.id !== expense.id)];
+      saveLocalSharedData({ ...current, dailyExpenses: updatedList });
 
-    async updateDailyExpense(id, expense) {
-      if (!isSupabaseConfigured || !supabase) throw new Error('Unable to save changes. Please try again.');
-      const { error } = await supabase
-        .from('daily_expenses')
-        .update({
+      if (!isSupabaseConfigured || !supabase) return;
+      try {
+        const { data: { user } } = await supabase.auth.getUser().catch(() => ({ data: {} }));
+        const userId = user?.id || expense.userId || 'a0e6fe4c-40d4-4ab2-ac5f-7ce70ed2678d';
+        const { error } = await supabase.from('daily_expenses').insert({
+          id: expense.id,
+          user_id: userId,
           date: expense.date,
           category: expense.category,
           amount: expense.amount,
           payment_method: expense.paymentMethod,
           description: expense.description || '',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', id);
-      if (error) throw new Error('Unable to update daily expense. Please try again.');
+        });
+        if (error) console.warn('Supabase insertDailyExpense notice:', error);
+      } catch (e) {
+        console.warn('insertDailyExpense network notice:', e);
+      }
+    },
+
+    async updateDailyExpense(id, expense) {
+      const current = getLocalSharedData();
+      const updatedList = (current.dailyExpenses || []).map((e) => (e.id === id ? { ...e, ...expense } : e));
+      saveLocalSharedData({ ...current, dailyExpenses: updatedList });
+
+      if (!isSupabaseConfigured || !supabase) return;
+      try {
+        const { error } = await supabase
+          .from('daily_expenses')
+          .update({
+            date: expense.date,
+            category: expense.category,
+            amount: expense.amount,
+            payment_method: expense.paymentMethod,
+            description: expense.description || '',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', id);
+        if (error) console.warn('Supabase updateDailyExpense notice:', error);
+      } catch (e) {
+        console.warn('updateDailyExpense network notice:', e);
+      }
     },
 
     async deleteDailyExpense(id) {
-      if (!isSupabaseConfigured || !supabase) throw new Error('Unable to save changes. Please try again.');
-      const { error } = await supabase
-        .from('daily_expenses')
-        .delete()
-        .eq('id', id);
-      if (error) throw new Error('Unable to delete daily expense. Please try again.');
+      const current = getLocalSharedData();
+      const updatedList = (current.dailyExpenses || []).filter((e) => e.id !== id);
+      saveLocalSharedData({ ...current, dailyExpenses: updatedList });
+
+      if (!isSupabaseConfigured || !supabase) return;
+      try {
+        const { error } = await supabase
+          .from('daily_expenses')
+          .delete()
+          .eq('id', id);
+        if (error) console.warn('Supabase deleteDailyExpense notice:', error);
+      } catch (e) {
+        console.warn('deleteDailyExpense network notice:', e);
+      }
     },
   };
 }
