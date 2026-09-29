@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node scripts/security_audit_test.mjs && node scripts/auth_verification_test.mjs && node scripts/account_management_test.mjs"
+    "test": "node scripts/security_audit_test.mjs && node scripts/auth_verification_test.mjs && node scripts/account_management_test.mjs && node scripts/multi_device_auth_test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",

@@ -122,7 +122,7 @@ export async function authSignIn(email, password) {
 
   // Ensure returned authenticated user belongs to the authorized whitelist
   if (!isAuthorizedEmail(data.user.email)) {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'local' });
     throw new Error('This email is not authorized to access Diamond Finance.');
   }
 
@@ -130,7 +130,7 @@ export async function authSignIn(email, password) {
   const profile = await fetchUserProfile(data.user.id);
 
   if (profile?.status === 'disabled') {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'local' });
     throw new Error('Account is disabled. Please contact the administrator.');
   }
 
@@ -312,12 +312,13 @@ export async function authUpdatePassword(newPassword) {
 }
 
 /**
- * Sign out and clear active session from Supabase Auth
+ * Sign out and clear active session locally on this device.
+ * Uses scope: 'local' so other devices and browsers remain logged in simultaneously.
  */
 export async function authSignOut() {
   if (isSupabaseConfigured && supabase) {
     try {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: 'local' });
     } catch (e) {
       console.warn('Supabase signOut notice:', e);
     }
@@ -340,14 +341,14 @@ export async function authGetSession() {
 
     const user = sessionData.session.user;
     if (!isAuthorizedEmail(user.email)) {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: 'local' });
       return null;
     }
 
     const profile = await fetchUserProfile(user.id);
 
     if (profile?.status === 'disabled') {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: 'local' });
       return null;
     }
 
