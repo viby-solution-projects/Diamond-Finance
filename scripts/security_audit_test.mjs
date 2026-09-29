@@ -219,20 +219,21 @@ assert(
 );
 
 // -----------------------------------------------------------------------------
-// Test 7: Exactly Three Authorized Accounts Enforcement (A1, A2, A3)
+// Test 7: Exactly Four Authorized Accounts Enforcement (A1, A2, A3, A4)
 // -----------------------------------------------------------------------------
 const hasAuthorizedList = (
   clientContent.includes('khakhkhard@gmail.com') &&
   clientContent.includes('kpatel467@gmail.com') &&
-  clientContent.includes('heyhkchag@gmail.com')
+  clientContent.includes('heyhkchag@gmail.com') &&
+  clientContent.includes('pravinthakkar8162@gmail.com')
 );
 const enforcesCaseInsensitive = clientContent.includes('.trim().toLowerCase()');
 const hasAuthFilter = clientContent.includes('isAuthorizedEmail');
 
 assert(
-  'Exactly three authorized accounts configured with case-insensitive, trimmed matching',
+  'Exactly four authorized accounts configured with case-insensitive, trimmed matching',
   hasAuthorizedList && enforcesCaseInsensitive && hasAuthFilter,
-  'AUTHORIZED_EMAILS includes khakhkhard@gmail.com, kpatel467@gmail.com, and heyhkchag@gmail.com with trim/toLowerCase normalization.'
+  'AUTHORIZED_EMAILS includes khakhkhard@gmail.com, kpatel467@gmail.com, heyhkchag@gmail.com, and pravinthakkar8162@gmail.com with trim/toLowerCase normalization.'
 );
 
 // -----------------------------------------------------------------------------

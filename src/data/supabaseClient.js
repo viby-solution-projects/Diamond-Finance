@@ -30,6 +30,7 @@ export const AUTHORIZED_EMAILS = [
   'khakhkhard@gmail.com',
   'kpatel467@gmail.com',
   'heyhkchag@gmail.com',
+  'pravinthakkar8162@gmail.com',
 ];
 
 export function isAuthorizedEmail(email) {
@@ -48,6 +49,9 @@ export function getAuthorizedUserDetails(email) {
   if (normalized === 'heyhkchag@gmail.com') {
     return { id: '45b7355e-e845-4f05-9dbe-5473de2dac6a', name: 'HK Chag', firstName: 'HK' };
   }
+  if (normalized === 'pravinthakkar8162@gmail.com') {
+    return { id: 'd8e4125b-9c71-4601-9a7c-871d34e40291', name: 'Pravin Thakkar', firstName: 'Pravin' };
+  }
   return { id: 'user_' + Date.now(), name: 'User', firstName: 'User' };
 }
 
@@ -58,24 +62,6 @@ export function extractFirstName(fullName) {
   const parts = clean.split(/\s+/);
   return parts[0] || 'User';
 }
-
-export function getDefaultPasswordForAccount(email) {
-  const normalized = (email || '').trim().toLowerCase();
-  if (DEFAULT_ACCOUNT_PASSWORDS[normalized]) {
-    return DEFAULT_ACCOUNT_PASSWORDS[normalized];
-  }
-  const prefix = normalized.split('@')[0] || 'user';
-  return `${prefix}!123`;
-}
-
-/**
- * Account passwords following the exact authorized pattern
- */
-export const DEFAULT_ACCOUNT_PASSWORDS = {
-  'khakhkhard@gmail.com': 'khakhkhard!123',
-  'kpatel467@gmail.com': 'kpatel467!123',
-  'heyhkchag@gmail.com': 'heyhkchag!123',
-};
 
 /**
  * Fetch profile record for a given user ID directly from public.profiles
@@ -102,27 +88,10 @@ export async function fetchUserProfile(userId) {
   }
 }
 
-export function getAccountActivePassword(email) {
-  const normalized = (email || '').trim().toLowerCase();
-  if (typeof localStorage !== 'undefined') {
-    const key = 'df_pwd_' + normalized;
-    const stored = localStorage.getItem(key);
-    if (stored) return stored;
-  }
-  return DEFAULT_ACCOUNT_PASSWORDS[normalized] || getDefaultPasswordForAccount(normalized);
-}
-
-export function setAccountActivePassword(email, newPassword) {
-  const normalized = (email || '').trim().toLowerCase();
-  if (typeof localStorage !== 'undefined') {
-    const key = 'df_pwd_' + normalized;
-    localStorage.setItem(key, newPassword);
-  }
-}
-
 /**
  * Authenticate with Supabase Auth and verify account status in profiles table.
  * Exactly three authorized email addresses are permitted.
+ * Real password verification is strictly performed by Supabase Auth backend.
  */
 export async function authSignIn(email, password) {
   const normalizedEmail = (email || '').trim().toLowerCase();
@@ -141,68 +110,53 @@ export async function authSignIn(email, password) {
     throw new Error('Supabase authentication is not configured. Please check your environment configuration.');
   }
 
-  // Verify credentials against account-specific active password
-  const activePassword = getAccountActivePassword(normalizedEmail);
-  const isPasswordMatch = activePassword ? (activePassword === cleanPassword) : false;
+  // Pure Supabase Auth verification
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: normalizedEmail,
+    password: cleanPassword,
+  });
 
-  let authData = null;
-  let authError = null;
-
-  try {
-    const res = await supabase.auth.signInWithPassword({
-      email: normalizedEmail,
-      password: cleanPassword,
-    });
-    authData = res.data;
-    authError = res.error;
-  } catch (err) {
-    authError = err;
+  if (error || !data?.session || !data?.user) {
+    throw new Error('Invalid email or password.');
   }
 
-  // If credentials match active password or Supabase successfully issued session
-  if (isPasswordMatch || authData?.user) {
-    const accountDetails = getAuthorizedUserDetails(normalizedEmail);
-    const userId = authData?.user?.id || accountDetails.id;
-    const user = {
-      id: userId,
-      email: normalizedEmail,
-      user_metadata: {
-        full_name: accountDetails.name,
-        role: 'super_admin',
-      },
-      aud: 'authenticated',
-      role: 'authenticated',
-    };
-    const profile = {
-      id: userId,
-      email: normalizedEmail,
-      full_name: accountDetails.name,
-      role: 'super_admin',
-      status: 'active',
-    };
-    const session = {
-      user,
-      access_token: 'df_session_' + userId,
-      token_type: 'bearer',
-      expires_at: Math.floor(Date.now() / 1000) + 3600 * 24 * 7,
-    };
-
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('diamond_finance_auth_session', JSON.stringify({ user, profile, session }));
-    }
-
-    return {
-      user,
-      session,
-      profile,
-    };
+  // Ensure returned authenticated user belongs to the authorized whitelist
+  if (!isAuthorizedEmail(data.user.email)) {
+    await supabase.auth.signOut();
+    throw new Error('This email is not authorized to access Diamond Finance.');
   }
 
-  throw new Error('Invalid email or password.');
+  // Fetch verified profile from database
+  const profile = await fetchUserProfile(data.user.id);
+
+  if (profile?.status === 'disabled') {
+    await supabase.auth.signOut();
+    throw new Error('Account is disabled. Please contact the administrator.');
+  }
+
+  const accountDetails = getAuthorizedUserDetails(data.user.email);
+  const resolvedProfile = profile ? {
+    ...profile,
+    role: 'super_admin',
+    status: 'active',
+  } : {
+    id: data.user.id,
+    email: data.user.email,
+    full_name: data.user.user_metadata?.full_name || accountDetails.name,
+    role: 'super_admin',
+    status: 'active',
+  };
+
+  return {
+    user: data.user,
+    session: data.session,
+    profile: resolvedProfile,
+  };
 }
 
 /**
  * Change Password: Secure password modification for currently authenticated user
+ * Verifies current password using Supabase Auth before applying new password.
  */
 export async function authChangePassword({ currentPassword, newPassword, confirmPassword }) {
   const session = await authGetSession();
@@ -228,22 +182,28 @@ export async function authChangePassword({ currentPassword, newPassword, confirm
     throw new Error('New password and confirmation do not match.');
   }
 
-  const activePassword = getAccountActivePassword(normalizedEmail);
-  if (activePassword && activePassword !== cleanCurrent) {
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error('Supabase authentication is not configured.');
+  }
+
+  // Verify current password via Supabase Auth
+  const { error: verifyError } = await supabase.auth.signInWithPassword({
+    email: normalizedEmail,
+    password: cleanCurrent,
+  });
+
+  if (verifyError) {
     throw new Error('Current password is incorrect.');
   }
 
   // Update password in Supabase Auth backend
-  if (isSupabaseConfigured && supabase) {
-    try {
-      await supabase.auth.updateUser({ password: cleanNew });
-    } catch (e) {
-      console.warn('Supabase auth password update notice:', e);
-    }
-  }
+  const { error: updateError } = await supabase.auth.updateUser({
+    password: cleanNew,
+  });
 
-  // Update active password for this specific account
-  setAccountActivePassword(normalizedEmail, cleanNew);
+  if (updateError) {
+    throw new Error(updateError.message || 'Unable to update password.');
+  }
 
   return { success: true, message: 'Password changed successfully.' };
 }
@@ -275,13 +235,6 @@ export async function updateCurrentUserProfile({ fullName }) {
     full_name: trimmedName,
     updated_at: new Date().toISOString(),
   };
-
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem(
-      'diamond_finance_auth_session',
-      JSON.stringify({ ...session, user: updatedUser, profile: updatedProfile })
-    );
-  }
 
   if (isSupabaseConfigured && supabase) {
     try {
@@ -342,31 +295,26 @@ export async function authUpdatePassword(newPassword) {
     throw new Error('Password must be at least 6 characters long.');
   }
 
-  const session = await authGetSession();
-  if (session?.user?.email) {
-    setAccountActivePassword(session.user.email, cleanPassword);
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error('Supabase is not configured.');
   }
 
-  if (isSupabaseConfigured && supabase) {
-    try {
-      await supabase.auth.updateUser({
-        password: cleanPassword,
-      });
-    } catch (e) {
-      console.warn('Supabase updatePassword notice:', e);
-    }
+  const { data, error } = await supabase.auth.updateUser({
+    password: cleanPassword,
+  });
+
+  if (error) {
+    console.error('Password update error:', error);
+    throw new Error(error.message || 'Unable to update password.');
   }
 
-  return { success: true };
+  return { success: true, data };
 }
 
 /**
- * Sign out and clear active session
+ * Sign out and clear active session from Supabase Auth
  */
 export async function authSignOut() {
-  if (typeof localStorage !== 'undefined') {
-    localStorage.removeItem('diamond_finance_auth_session');
-  }
   if (isSupabaseConfigured && supabase) {
     try {
       await supabase.auth.signOut();
@@ -377,73 +325,49 @@ export async function authSignOut() {
 }
 
 /**
- * Restore active session and verify account status in profiles
+ * Restore active session from Supabase Auth and verify account status in profiles
  */
 export async function authGetSession() {
-  if (typeof localStorage !== 'undefined') {
-    const stored = localStorage.getItem('diamond_finance_auth_session');
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        if (parsed?.user?.email && isAuthorizedEmail(parsed.user.email)) {
-          return {
-            ...parsed.session,
-            user: parsed.user,
-            profile: parsed.profile,
-          };
-        }
-      } catch {
-        // ignore
-      }
-    }
-  }
-
   if (!isSupabaseConfigured || !supabase) {
     return null;
   }
 
   try {
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-    if (!sessionError && sessionData?.session?.user) {
-      const user = sessionData.session.user;
-      if (!isAuthorizedEmail(user.email)) {
-        await supabase.auth.signOut();
-        if (typeof localStorage !== 'undefined') {
-          localStorage.removeItem('diamond_finance_auth_session');
-        }
-        return null;
-      }
-
-      const profile = await fetchUserProfile(user.id);
-
-      if (profile?.status === 'disabled') {
-        await supabase.auth.signOut();
-        if (typeof localStorage !== 'undefined') {
-          localStorage.removeItem('diamond_finance_auth_session');
-        }
-        return null;
-      }
-
-      const accountDetails = getAuthorizedUserDetails(user.email);
-      const resolvedProfile = profile ? {
-        ...profile,
-        role: 'super_admin',
-        status: 'active',
-      } : {
-        id: user.id,
-        email: user.email,
-        full_name: user.user_metadata?.full_name || accountDetails.name,
-        role: 'super_admin',
-        status: 'active',
-      };
-
-      return {
-        ...sessionData.session,
-        profile: resolvedProfile,
-      };
+    if (sessionError || !sessionData?.session?.user) {
+      return null;
     }
 
-    return null;
+    const user = sessionData.session.user;
+    if (!isAuthorizedEmail(user.email)) {
+      await supabase.auth.signOut();
+      return null;
+    }
+
+    const profile = await fetchUserProfile(user.id);
+
+    if (profile?.status === 'disabled') {
+      await supabase.auth.signOut();
+      return null;
+    }
+
+    const accountDetails = getAuthorizedUserDetails(user.email);
+    const resolvedProfile = profile ? {
+      ...profile,
+      role: 'super_admin',
+      status: 'active',
+    } : {
+      id: user.id,
+      email: user.email,
+      full_name: user.user_metadata?.full_name || accountDetails.name,
+      role: 'super_admin',
+      status: 'active',
+    };
+
+    return {
+      ...sessionData.session,
+      profile: resolvedProfile,
+    };
   } catch (err) {
     console.error('Session verification failed:', err);
     return null;
