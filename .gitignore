@@ -7,3 +7,10 @@ dist/
 
 .vscode/
 .DS_Store
+
+# One-time admin scripts & secrets
+scripts/admin_*
+scripts/*.local.*
+*.local.mjs
+*.local.js
+
