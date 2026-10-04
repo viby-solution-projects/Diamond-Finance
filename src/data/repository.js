@@ -439,8 +439,8 @@ export function supabaseRepository() {
 
       if (!isSupabaseConfigured || !supabase) return;
       try {
-        const { data: { user } } = await supabase.auth.getUser().catch(() => ({ data: {} }));
-        const userId = user?.id || entry.userId || 'a0e6fe4c-40d4-4ab2-ac5f-7ce70ed2678d';
+        // Open workspace (no authentication): anonymous rows store NULL user_id.
+        const userId = entry.userId || null;
         const { error } = await supabase.from('bookkeeping_entries').insert({
           id: entry.id,
           user_id: userId,
@@ -507,8 +507,8 @@ export function supabaseRepository() {
 
       if (!isSupabaseConfigured || !supabase) return;
       try {
-        const { data: { user } } = await supabase.auth.getUser().catch(() => ({ data: {} }));
-        const userId = user?.id || expense.userId || 'a0e6fe4c-40d4-4ab2-ac5f-7ce70ed2678d';
+        // Open workspace (no authentication): anonymous rows store NULL user_id.
+        const userId = expense.userId || null;
         const { error } = await supabase.from('daily_expenses').insert({
           id: expense.id,
           user_id: userId,

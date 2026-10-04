@@ -1,8 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from "react";
+import React, { createContext, useContext, useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import {
   BarChart3,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
@@ -29,23 +28,12 @@ import {
   AlertCircle,
   CheckCircle2,
   Eye,
-  EyeOff,
-  Lock,
   Sun,
   Moon,
   Receipt,
   Layers,
-  LogOut,
 } from "lucide-react";
 import "./styles.css";
-import {
-  supabase,
-  authSignOut,
-  authGetSession,
-  authChangePassword,
-  updateCurrentUserProfile,
-  updateProfile,
-} from "./data/supabaseClient";
 import {
   dealerTypeLabel,
   supabaseRepository,
@@ -80,7 +68,7 @@ function useData() {
 
 function routeName() {
   const path = window.location.pathname;
-  // Public authentication routes are disabled. Treat /login and /signup
+  // Legacy authentication routes are disabled. Treat /login and /signup
   // as the home page so direct navigation redirects to "/".
   if (path === "/login" || path === "/signup") return "Dashboard";
   if (path === "/" || path === "") return "Dashboard";
@@ -108,9 +96,9 @@ function navigate(path) {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
-// Public authentication is disabled. Any direct navigation to /login or
-// /signup is redirected to the home page ("/"). Existing Supabase sessions
-// are left untouched so authorized browsers stay signed in.
+// Diamond Finance is an open workspace (no login, no signup, no session).
+// Legacy /login and /signup URLs redirect to the home page ("/") so old
+// bookmarks keep working and the Dashboard opens directly for everyone.
 function normalizeDisabledAuthRoute() {
   if (typeof window === "undefined") return;
   const path = window.location.pathname;
@@ -153,26 +141,6 @@ function formatIndianNumber(value) {
   return formattedInt + decPart;
 }
 
-function getUserDisplayName(profile, user) {
-  if (profile?.full_name && profile.full_name.trim()) {
-    return profile.full_name.trim();
-  }
-  if (user?.user_metadata?.full_name && user.user_metadata.full_name.trim()) {
-    return user.user_metadata.full_name.trim();
-  }
-  if (user?.email) {
-    const raw = user.email.split("@")[0] || "";
-    const parts = raw.split(/[._-]+/).filter(Boolean);
-    if (parts.length > 0) {
-      return parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(" ");
-    }
-    if (raw) {
-      return raw.charAt(0).toUpperCase() + raw.slice(1);
-    }
-  }
-  return "User";
-}
-
 function getTimeGreeting() {
   const hour = new Date().getHours();
   if (hour < 12) return "Good morning";
@@ -183,7 +151,6 @@ function getTimeGreeting() {
 function App() {
   const [current, setCurrent] = useState(routeName());
   const [drawer, setDrawer] = useState(false);
-  const [menu, setMenu] = useState(null);
   const [theme, setTheme] = useState(() => {
     try {
       const savedTheme = localStorage.getItem("diamond-finance-theme");
@@ -202,11 +169,7 @@ function App() {
     bookkeeping: [],
     dailyExpenses: [],
   });
-  const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(false);
-  const profileMenuRef = useRef(null);
 
   const supabaseRepo = supabaseRepository();
 
@@ -235,48 +198,7 @@ function App() {
     return () => window.removeEventListener("popstate", handleLocationChange);
   }, []);
 
-  useEffect(() => {
-    let authSubscription = null;
-
-    authGetSession().then((session) => {
-      if (session?.user) {
-        setUser(session.user);
-        setProfile(session.profile);
-      } else {
-        setUser(null);
-        setProfile(null);
-      }
-      setAuthLoading(false);
-    });
-
-    if (supabase) {
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-        if (event === "SIGNED_OUT" || !session?.user) {
-          setUser(null);
-          setProfile(null);
-          setData({ transactions: [], dealers: [], payments: [], bookkeeping: [], dailyExpenses: [] });
-          normalizeDisabledAuthRoute();
-          if (window.location.pathname !== "/") {
-            navigate("/");
-          }
-        } else if (session?.user) {
-          setUser(session.user);
-          const restored = await authGetSession();
-          if (restored?.profile) {
-            setProfile(restored.profile);
-          }
-        }
-      });
-      authSubscription = subscription;
-    }
-
-    return () => {
-      if (authSubscription) authSubscription.unsubscribe();
-    };
-  }, []);
-
   const loadData = async () => {
-    if (!user) return;
     setDataLoading(true);
     try {
       const remoteData = await supabaseRepo.loadAll();
@@ -290,22 +212,10 @@ function App() {
     }
   };
 
+  // Open workspace: load shared business data on startup, no session needed.
   useEffect(() => {
-    if (user?.id) {
-      loadData();
-    } else {
-      setData({ transactions: [], dealers: [], payments: [], bookkeeping: [], dailyExpenses: [] });
-    }
-  }, [user?.id]);
-
-  const handleLogout = async () => {
-    await authSignOut();
-    setUser(null);
-    setProfile(null);
-    setData({ transactions: [], dealers: [], payments: [], bookkeeping: [], dailyExpenses: [] });
-    setMenu(null);
-    navigate("/");
-  };
+    loadData();
+  }, []);
 
   const addTransaction = async (transaction) => {
     try {
@@ -517,7 +427,6 @@ function App() {
     const escape = (event) => {
       if (event.key === "Escape") {
         setDrawer(false);
-        setMenu(null);
       }
     };
     window.addEventListener("keydown", escape);
@@ -533,64 +442,20 @@ function App() {
     };
   }, [drawer]);
 
-  useEffect(() => {
-    if (menu !== "profile") return undefined;
-    const handleOutsideClick = (event) => {
-      if (!profileMenuRef.current?.contains(event.target)) setMenu(null);
-    };
-    document.addEventListener("mousedown", handleOutsideClick);
-    return () => document.removeEventListener("mousedown", handleOutsideClick);
-  }, [menu]);
-
   const go = (path) => {
     navigate(path);
     setDrawer(false);
-    setMenu(null);
   };
 
-  if (authLoading) {
-    return (
-      <div className="login-shell">
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", color: "var(--muted)", fontSize: "13px" }}>
-          <div className="brand-mark" style={{ width: "40px", height: "40px", borderRadius: "10px" }}>
-            <Gem size={22} />
-          </div>
-          <span>Loading workspace...</span>
-        </div>
-      </div>
-    );
-  }
-
-  // Public authentication is disabled. There is no login or sign-up form.
-  // Existing Supabase sessions continue to work; without a session the
-  // private workspace notice is shown and /login or /signup redirect to "/".
-  if (!user) {
-    normalizeDisabledAuthRoute();
-    return <AccessRestrictedPage />;
-  }
-
   normalizeDisabledAuthRoute();
-
-  const userName = getUserDisplayName(profile, user);
-  const userInitials = (userName || "U")
-    .split(/\s+|@/)
-    .filter(Boolean)
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase() || "U";
 
   return (
     <DataContext.Provider
       value={{
         data,
-        user,
-        profile,
         theme,
         setTheme,
         toggleTheme,
-        setProfile,
-        handleLogout,
         addTransaction,
         updateTransaction,
         deleteTransaction,
@@ -616,10 +481,6 @@ function App() {
           onNavigate={go}
           open={drawer}
           onClose={() => setDrawer(false)}
-          user={user}
-          userName={userName}
-          userInitials={userInitials}
-          onLogout={handleLogout}
         />
         <main className="main-area">
           <header className="topbar">
@@ -677,7 +538,7 @@ function App() {
               ) : null}
               <strong>{current}</strong>
             </div>
-            <div className="top-actions" ref={profileMenuRef}>
+            <div className="top-actions">
               <button
                 className="theme-toggle-btn"
                 onClick={toggleTheme}
@@ -686,35 +547,6 @@ function App() {
               >
                 {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
               </button>
-              <button
-                className="avatar"
-                aria-label="Open profile"
-                onClick={() => setMenu(menu === "profile" ? null : "profile")}
-              >
-                {userInitials}
-              </button>
-              <button
-                className="profile-name"
-                onClick={() => setMenu(menu === "profile" ? null : "profile")}
-              >
-                {userName} <ChevronDown size={14} />
-              </button>
-              {menu === "profile" && (
-                <div className="top-menu">
-                  <b>{userName}</b>
-                  <span style={{ fontSize: "11px", color: "var(--muted)" }}>{user?.email}</span>
-                  <div className="top-menu-divider" />
-                  <button onClick={() => go("/profile")}>
-                    Account / Profile
-                  </button>
-                  <button onClick={() => go("/settings")}>Settings</button>
-                  <button onClick={toggleTheme}>
-                    {theme === "dark" ? "☀️ Light Mode" : "🌙 Dark Mode"}
-                  </button>
-                  <div className="top-menu-divider" />
-                  <button onClick={handleLogout} style={{ color: "#d04f59" }}>Log out</button>
-                </div>
-              )}
             </div>
           </header>
           <div
@@ -748,30 +580,7 @@ function AppFooter() {
   );
 }
 
-function AccessRestrictedPage() {
-  return (
-    <div className="login-shell">
-      <div className="login-card">
-        <div className="login-head">
-          <div className="login-brand">
-            <div className="brand-mark">
-              <Gem size={20} />
-            </div>
-            <span>Diamond Finance</span>
-          </div>
-          <h1>Private workspace</h1>
-          <p>Public sign-in and registration are disabled. Please contact your workspace administrator for access.</p>
-        </div>
-        <div className="login-security-note">
-          <Lock size={12} />
-          <span>Protected finance workspace • Diamond Finance</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Sidebar({ current, onNavigate, open, onClose, user, userName, userInitials, onLogout }) {
+function Sidebar({ current, onNavigate, open, onClose }) {
   return (
     <>
       {open && <div className="scrim" onClick={onClose} />}
@@ -833,33 +642,6 @@ function Sidebar({ current, onNavigate, open, onClose, user, userName, userIniti
             );
           })}
         </nav>
-        {user && (
-          <div className="sidebar-footer">
-            <div
-              className="sidebar-user"
-              onClick={() => onNavigate("/profile")}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onNavigate("/profile")}
-            >
-              <div className="sidebar-avatar">{userInitials || "U"}</div>
-              <div className="sidebar-user-info">
-                <b>{userName || "User"}</b>
-                <small>{user.email}</small>
-              </div>
-            </div>
-            <button
-              type="button"
-              className="sidebar-logout-btn"
-              onClick={onLogout}
-              aria-label="Sign Out"
-              title="Sign Out"
-            >
-              <LogOut size={16} />
-              <span>Sign Out</span>
-            </button>
-          </div>
-        )}
       </aside>
     </>
   );
@@ -1202,9 +984,8 @@ function MiniChart({ transactions, payments, period = "Monthly", monthCount = 6 
 }
 
 function Dashboard({ onNavigate }) {
-  const { data, user, profile } = useData();
+  const { data } = useData();
   const [revenueRange, setRevenueRange] = useState("6");
-  const displayName = getUserDisplayName(profile, user);
   const timeGreeting = getTimeGreeting();
   const revenue = data.transactions.reduce((sum, item) => sum + (item.totalRate || item.amount || 0), 0);
   
@@ -1215,7 +996,8 @@ function Dashboard({ onNavigate }) {
   return (
     <>
       <PageHeader
-        title={`${timeGreeting}, ${displayName}`}
+        title={`${timeGreeting}`}
+        description="Here's your finance workspace overview."
         action={
           <Button onClick={() => onNavigate("/new-transaction")} icon={Plus}>
             New deal
@@ -1529,7 +1311,7 @@ function SearchInput({ value, onChange, placeholder }) {
    NEW PAGE: DAILY FINANCE (EXPENSE TRACKER)
    ============================================================================== */
 function DailyFinance({ onNavigate }) {
-  const { data, user, addDailyExpense, updateDailyExpense, deleteDailyExpense } = useData();
+  const { data, addDailyExpense, updateDailyExpense, deleteDailyExpense } = useData();
   const [dateFilter, setDateFilter] = useState("All");
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [specificDate, setSpecificDate] = useState("");
@@ -1578,7 +1360,7 @@ function DailyFinance({ onNavigate }) {
       const newEntry = {
         ...expenseData,
         id: nextId("EXP", expenses),
-        userId: user?.id,
+        userId: null,
         createdAt: new Date().toISOString(),
       };
       await addDailyExpense(newEntry);
@@ -5120,7 +4902,7 @@ function Analytics({ onNavigate }) {
 }
 
 function Bookkeeping({ onNavigate }) {
-  const { data, user, addBookkeepingEntry, updateBookkeepingEntry, deleteBookkeepingEntry } = useData();
+  const { data, addBookkeepingEntry, updateBookkeepingEntry, deleteBookkeepingEntry } = useData();
   const entries = data.bookkeeping || [];
   const [filter, setFilter] = useState("All");
   const [formOpen, setFormOpen] = useState(false);
@@ -5238,7 +5020,7 @@ function Bookkeeping({ onNavigate }) {
     const entry = {
       ...form,
       id: editing?.id || nextId("BK", entries),
-      userId: user?.id,
+      userId: null,
       category: form.category.trim(),
       description: form.description.trim(),
       amount,
@@ -5369,27 +5151,10 @@ function Bookkeeping({ onNavigate }) {
 
 
 function SettingsPage({ onNavigate }) {
-  const { theme, setTheme, user, profile, setProfile, handleLogout } = useData();
+  const { theme, setTheme } = useData();
   const [settings, setSettings] = useState(loadSettings);
   const [savedNotice, setSavedNotice] = useState(false);
   const [error, setError] = useState("");
-
-  // Profile Name Edit State
-  const [fullName, setFullName] = useState(() => profile?.full_name || user?.user_metadata?.full_name || "");
-  const [profileSaving, setProfileSaving] = useState(false);
-  const [profileSuccess, setProfileSuccess] = useState("");
-  const [profileError, setProfileError] = useState("");
-
-  // Change Password State
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
-  const [showNewPassword, setShowNewPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [pwdLoading, setPwdLoading] = useState(false);
-  const [pwdSuccess, setPwdSuccess] = useState("");
-  const [pwdError, setPwdError] = useState("");
 
   useEffect(() => {
     const nextSettings = loadSettings();
@@ -5398,10 +5163,7 @@ function SettingsPage({ onNavigate }) {
       businessName: nextSettings.businessName || "Diamond Broker",
       address: nextSettings.address || "",
     });
-    if (profile?.full_name) {
-      setFullName(profile.full_name);
-    }
-  }, [profile?.full_name]);
+  }, []);
 
   const setField = (event) => {
     const { name, value, checked, type } = event.target;
@@ -5428,71 +5190,6 @@ function SettingsPage({ onNavigate }) {
     }
   };
 
-  const handleUpdateProfileName = async (e) => {
-    e.preventDefault();
-    setProfileError("");
-    setProfileSuccess("");
-    if (!fullName.trim()) {
-      setProfileError("Please enter your name.");
-      return;
-    }
-
-    setProfileSaving(true);
-    try {
-      const res = await updateCurrentUserProfile({ fullName: fullName.trim() });
-      if (res?.profile) {
-        setProfile(res.profile);
-      }
-      setProfileSuccess("Account profile name updated successfully.");
-      setTimeout(() => setProfileSuccess(""), 4000);
-    } catch (err) {
-      setProfileError(err?.message || "Unable to update account name.");
-    } finally {
-      setProfileSaving(false);
-    }
-  };
-
-  const handleChangePasswordSubmit = async (e) => {
-    e.preventDefault();
-    setPwdError("");
-    setPwdSuccess("");
-
-    if (!currentPassword.trim()) {
-      setPwdError("Please enter your current password.");
-      return;
-    }
-    if (!newPassword.trim()) {
-      setPwdError("Please enter a new password.");
-      return;
-    }
-    if (newPassword.trim().length < 6) {
-      setPwdError("New password must be at least 6 characters long.");
-      return;
-    }
-    if (newPassword.trim() !== confirmPassword.trim()) {
-      setPwdError("New password and confirmation do not match.");
-      return;
-    }
-
-    setPwdLoading(true);
-    try {
-      await authChangePassword({
-        currentPassword: currentPassword.trim(),
-        newPassword: newPassword.trim(),
-        confirmPassword: confirmPassword.trim(),
-      });
-      setPwdSuccess("Password changed successfully.");
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-      setTimeout(() => setPwdSuccess(""), 4500);
-    } catch (err) {
-      setPwdError(err?.message || "Failed to update password.");
-    } finally {
-      setPwdLoading(false);
-    }
-  };
-
   return (
     <>
       <PageHeader
@@ -5500,8 +5197,8 @@ function SettingsPage({ onNavigate }) {
         backLabel="Back to Dashboard"
         onNavigate={onNavigate}
         eyebrow="Workspace"
-        title="Settings & Account"
-        description="Manage your account profile, account security, theme appearance, and business details."
+        title="Settings"
+        description="Manage theme appearance and business details."
         action={<Button onClick={handleSave}>Save changes</Button>}
       />
 
@@ -5520,195 +5217,7 @@ function SettingsPage({ onNavigate }) {
       )}
 
       <div className="settings-page">
-        {/* SECTION 1: ACCOUNT PROFILE */}
-        <section className="settings-section">
-          <div className="settings-section-head">
-            <h2>Account Profile</h2>
-          </div>
-          <form onSubmit={handleUpdateProfileName}>
-            {profileSuccess && (
-              <div className="notice" style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
-                <CheckCircle2 size={16} color="var(--green)" />
-                <span>{profileSuccess}</span>
-              </div>
-            )}
-            {profileError && (
-              <div className="login-error-banner" style={{ marginBottom: "12px" }} role="alert">
-                <AlertCircle size={16} />
-                <span>{profileError}</span>
-              </div>
-            )}
-            <div className="settings-field-grid">
-              <div className="settings-field">
-                <span>Account Email</span>
-                <input
-                  type="email"
-                  value={user?.email || ""}
-                  disabled
-                  style={{
-                    background: "var(--line-subtle)",
-                    color: "var(--ink)",
-                    cursor: "not-allowed",
-                    fontWeight: 600,
-                  }}
-                />
-                <small>Authenticated Diamond Finance account (Read-only).</small>
-              </div>
-
-              <div className="settings-field">
-                <span>Access Level</span>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    padding: "9px 12px",
-                    borderRadius: "8px",
-                    background: "var(--blue-soft)",
-                    border: "1px solid rgba(35, 100, 232, 0.2)",
-                    color: "var(--blue)",
-                    fontWeight: 700,
-                    fontSize: "13px",
-                    height: "40px",
-                  }}
-                >
-                  <Lock size={14} />
-                  <span>Super Admin (Full Workspace Access)</span>
-                </div>
-                <small>All authorized Diamond Finance accounts have full permissions.</small>
-              </div>
-
-              <label className="settings-field full-width-field">
-                <span>Profile Name</span>
-                <div style={{ display: "flex", gap: "10px" }}>
-                  <input
-                    type="text"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="e.g. HK Chag"
-                    style={{ flex: 1 }}
-                  />
-                  <Button
-                    type="submit"
-                    disabled={profileSaving}
-                    icon={null}
-                    style={{ minWidth: "120px", justifyContent: "center" }}
-                  >
-                    {profileSaving ? "Saving..." : "Save Name"}
-                  </Button>
-                </div>
-                <small>Displayed on top bar and audit activity records.</small>
-              </label>
-            </div>
-          </form>
-        </section>
-
-        {/* SECTION 2: CHANGE PASSWORD */}
-        <section className="settings-section">
-          <div className="settings-section-head">
-            <h2>Change Password</h2>
-          </div>
-          <form onSubmit={handleChangePasswordSubmit} noValidate>
-            {pwdSuccess && (
-              <div className="notice" style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" }}>
-                <CheckCircle2 size={16} color="var(--green)" />
-                <span>{pwdSuccess}</span>
-              </div>
-            )}
-            {pwdError && (
-              <div className="login-error-banner" style={{ marginBottom: "14px" }} role="alert">
-                <AlertCircle size={16} />
-                <span>{pwdError}</span>
-              </div>
-            )}
-
-            <div className="settings-field-grid">
-              <div className="settings-field full-width-field">
-                <span>Current Password</span>
-                <div className="login-password-wrap" style={{ width: "100%" }}>
-                  <input
-                    type={showCurrentPassword ? "text" : "password"}
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    placeholder="Enter your current password"
-                    autoComplete="current-password"
-                    required
-                  />
-                  <button
-                    type="button"
-                    className="password-toggle-btn"
-                    onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                    aria-label={showCurrentPassword ? "Hide password" : "Show password"}
-                    tabIndex={-1}
-                  >
-                    {showCurrentPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-              </div>
-
-              <div className="settings-field">
-                <span>New Password</span>
-                <div className="login-password-wrap" style={{ width: "100%" }}>
-                  <input
-                    type={showNewPassword ? "text" : "password"}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Minimum 6 characters"
-                    autoComplete="new-password"
-                    required
-                  />
-                  <button
-                    type="button"
-                    className="password-toggle-btn"
-                    onClick={() => setShowNewPassword(!showNewPassword)}
-                    aria-label={showNewPassword ? "Hide password" : "Show password"}
-                    tabIndex={-1}
-                  >
-                    {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-                <small>Must be at least 6 characters long.</small>
-              </div>
-
-              <div className="settings-field">
-                <span>Confirm New Password</span>
-                <div className="login-password-wrap" style={{ width: "100%" }}>
-                  <input
-                    type={showConfirmPassword ? "text" : "password"}
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Re-enter new password"
-                    autoComplete="new-password"
-                    required
-                  />
-                  <button
-                    type="button"
-                    className="password-toggle-btn"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    aria-label={showConfirmPassword ? "Hide password" : "Show password"}
-                    tabIndex={-1}
-                  >
-                    {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-                <small>Passwords must match exactly.</small>
-              </div>
-
-              <div className="settings-field full-width-field" style={{ marginTop: "4px" }}>
-                <Button
-                  type="submit"
-                  disabled={pwdLoading}
-                  icon={null}
-                  style={{ width: "fit-content", minWidth: "160px", justifyContent: "center" }}
-                >
-                  {pwdLoading ? "Updating Password..." : "Update Password"}
-                </Button>
-              </div>
-            </div>
-          </form>
-        </section>
-
-        {/* SECTION 3: APPEARANCE & THEME */}
+        {/* SECTION 1: APPEARANCE & THEME */}
         <section className="settings-section">
           <div className="settings-section-head">
             <h2>Appearance & Theme</h2>
@@ -5766,7 +5275,7 @@ function SettingsPage({ onNavigate }) {
           </div>
         </section>
 
-        {/* SECTION 4: BUSINESS PROFILE */}
+        {/* SECTION 2: BUSINESS PROFILE */}
         <section className="settings-section">
           <div className="settings-section-head">
             <h2>Business</h2>
@@ -5793,41 +5302,6 @@ function SettingsPage({ onNavigate }) {
           </div>
         </section>
 
-        {/* SECTION 5: LOGOUT / SESSION */}
-        <section className="settings-section">
-          <div className="settings-section-head">
-            <h2>Session & Security</h2>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0" }}>
-            <div>
-              <b style={{ display: "block", color: "var(--ink)", fontSize: "14px", marginBottom: "4px" }}>
-                Log out of Diamond Finance
-              </b>
-              <small style={{ color: "var(--muted)" }}>
-                End your active authenticated session on this browser.
-              </small>
-            </div>
-            <button
-              type="button"
-              onClick={handleLogout}
-              style={{
-                background: "#fef2f2",
-                color: "#dc2626",
-                border: "1px solid #fecaca",
-                padding: "9px 18px",
-                borderRadius: "8px",
-                fontWeight: 700,
-                fontSize: "13px",
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-              }}
-            >
-              Sign Out
-            </button>
-          </div>
-        </section>
       </div>
     </>
   );
