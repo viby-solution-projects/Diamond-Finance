@@ -272,7 +272,7 @@ export async function authResetPasswordForEmail(email) {
   }
 
   const redirectTo = typeof window !== 'undefined' 
-    ? `${window.location.origin}/login?type=recovery` 
+    ? `${window.location.origin}/?type=recovery` 
     : undefined;
 
   const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {

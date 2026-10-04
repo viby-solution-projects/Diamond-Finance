@@ -40,11 +40,8 @@ import {
 import "./styles.css";
 import {
   supabase,
-  authSignIn,
   authSignOut,
   authGetSession,
-  authResetPasswordForEmail,
-  authUpdatePassword,
   authChangePassword,
   updateCurrentUserProfile,
   updateProfile,
@@ -83,7 +80,9 @@ function useData() {
 
 function routeName() {
   const path = window.location.pathname;
-  if (path === "/login") return "Login";
+  // Public authentication routes are disabled. Treat /login and /signup
+  // as the home page so direct navigation redirects to "/".
+  if (path === "/login" || path === "/signup") return "Dashboard";
   if (path === "/" || path === "") return "Dashboard";
   if (path === "/transactions" || path === "/deals") return "Deals";
   if (path === "/transaction-details" || path === "/deal-details") return "Deal Details";
@@ -107,6 +106,17 @@ function routeName() {
 function navigate(path) {
   window.history.pushState({}, "", path);
   window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+// Public authentication is disabled. Any direct navigation to /login or
+// /signup is redirected to the home page ("/"). Existing Supabase sessions
+// are left untouched so authorized browsers stay signed in.
+function normalizeDisabledAuthRoute() {
+  if (typeof window === "undefined") return;
+  const path = window.location.pathname;
+  if (path === "/login" || path === "/signup") {
+    window.history.replaceState({}, "", "/");
+  }
 }
 
 function sanitizeCsvCell(value) {
@@ -216,7 +226,9 @@ function App() {
   };
 
   useEffect(() => {
+    normalizeDisabledAuthRoute();
     const handleLocationChange = () => {
+      normalizeDisabledAuthRoute();
       setCurrent(routeName());
     };
     window.addEventListener("popstate", handleLocationChange);
@@ -243,8 +255,9 @@ function App() {
           setUser(null);
           setProfile(null);
           setData({ transactions: [], dealers: [], payments: [], bookkeeping: [], dailyExpenses: [] });
-          if (window.location.pathname !== "/login") {
-            navigate("/login");
+          normalizeDisabledAuthRoute();
+          if (window.location.pathname !== "/") {
+            navigate("/");
           }
         } else if (session?.user) {
           setUser(session.user);
@@ -291,12 +304,6 @@ function App() {
     setProfile(null);
     setData({ transactions: [], dealers: [], payments: [], bookkeeping: [], dailyExpenses: [] });
     setMenu(null);
-    navigate("/login");
-  };
-
-  const handleLoginSuccess = ({ user: authenticatedUser, profile: userProfile }) => {
-    setUser(authenticatedUser);
-    setProfile(userProfile);
     navigate("/");
   };
 
@@ -554,16 +561,15 @@ function App() {
     );
   }
 
-  if (!user || current === "Login") {
-    if (window.location.pathname !== "/login") {
-      window.history.replaceState({}, "", "/login");
-    }
-    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+  // Public authentication is disabled. There is no login or sign-up form.
+  // Existing Supabase sessions continue to work; without a session the
+  // private workspace notice is shown and /login or /signup redirect to "/".
+  if (!user) {
+    normalizeDisabledAuthRoute();
+    return <AccessRestrictedPage />;
   }
 
-  if (window.location.pathname === "/login") {
-    window.history.replaceState({}, "", "/");
-  }
+  normalizeDisabledAuthRoute();
 
   const userName = getUserDisplayName(profile, user);
   const userInitials = (userName || "U")
@@ -718,9 +724,50 @@ function App() {
           >
             <Page current={current} onNavigate={go} />
           </div>
+          <AppFooter />
         </main>
       </div>
     </DataContext.Provider>
+  );
+}
+
+function AppFooter() {
+  return (
+    <footer className="app-footer" aria-label="Application credit">
+      <span className="app-footer-text">
+        Made by{" "}
+        <a
+          href="https://www.vibysolution.com/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Viby Solution
+        </a>
+      </span>
+    </footer>
+  );
+}
+
+function AccessRestrictedPage() {
+  return (
+    <div className="login-shell">
+      <div className="login-card">
+        <div className="login-head">
+          <div className="login-brand">
+            <div className="brand-mark">
+              <Gem size={20} />
+            </div>
+            <span>Diamond Finance</span>
+          </div>
+          <h1>Private workspace</h1>
+          <p>Public sign-in and registration are disabled. Please contact your workspace administrator for access.</p>
+        </div>
+        <div className="login-security-note">
+          <Lock size={12} />
+          <span>Protected finance workspace • Diamond Finance</span>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -5454,7 +5501,7 @@ function SettingsPage({ onNavigate }) {
         onNavigate={onNavigate}
         eyebrow="Workspace"
         title="Settings & Account"
-        description="Manage your account profile, login security, theme appearance, and business details."
+        description="Manage your account profile, account security, theme appearance, and business details."
         action={<Button onClick={handleSave}>Save changes</Button>}
       />
 
@@ -5505,7 +5552,7 @@ function SettingsPage({ onNavigate }) {
                     fontWeight: 600,
                   }}
                 />
-                <small>Authenticated Diamond Finance login account (Read-only).</small>
+                <small>Authenticated Diamond Finance account (Read-only).</small>
               </div>
 
               <div className="settings-field">
@@ -5788,368 +5835,6 @@ function SettingsPage({ onNavigate }) {
 
 function ProfilePage({ onNavigate }) {
   return <SettingsPage onNavigate={onNavigate} />;
-}
-
-function LoginPage({ onLoginSuccess }) {
-  const [mode, setMode] = useState(() => {
-    if (typeof window !== "undefined") {
-      const search = new URLSearchParams(window.location.search);
-      const hash = window.location.hash || "";
-      if (
-        search.get("type") === "recovery" ||
-        hash.includes("type=recovery") ||
-        search.get("reset") === "true"
-      ) {
-        return "reset";
-      }
-    }
-    return "login";
-  });
-
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [showNewPassword, setShowNewPassword] = useState(false);
-  const [error, setError] = useState("");
-  const [successNotice, setSuccessNotice] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (supabase) {
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-        if (event === "PASSWORD_RECOVERY") {
-          setMode("reset");
-          setError("");
-          setSuccessNotice("");
-        }
-      });
-      return () => subscription?.unsubscribe();
-    }
-  }, []);
-
-  const handleLoginSubmit = async (e) => {
-    e.preventDefault();
-    if (loading) return;
-    setError("");
-    setSuccessNotice("");
-
-    const cleanEmail = email.trim();
-    const cleanPassword = password.trim();
-
-    if (!cleanEmail || !cleanPassword) {
-      setError("Please enter your email and password.");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const res = await authSignIn(cleanEmail, cleanPassword);
-      onLoginSuccess({ user: res.user, profile: res.profile });
-    } catch (err) {
-      setError(err?.message || "Invalid email or password.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleForgotPasswordSubmit = async (e) => {
-    e.preventDefault();
-    if (loading) return;
-    setError("");
-    setSuccessNotice("");
-
-    const cleanEmail = email.trim();
-    if (!cleanEmail) {
-      setError("Please enter your email address.");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await authResetPasswordForEmail(cleanEmail);
-      setSuccessNotice(
-        `Password reset instructions have been sent to ${cleanEmail}. Please check your inbox and click the reset link.`
-      );
-    } catch (err) {
-      setError(err?.message || "Failed to send password reset instructions.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleResetPasswordSubmit = async (e) => {
-    e.preventDefault();
-    if (loading) return;
-    setError("");
-    setSuccessNotice("");
-
-    const cleanNewPassword = newPassword.trim();
-    const cleanConfirm = confirmPassword.trim();
-
-    if (!cleanNewPassword || !cleanConfirm) {
-      setError("Please fill in both password fields.");
-      return;
-    }
-
-    if (cleanNewPassword.length < 6) {
-      setError("Password must be at least 6 characters long.");
-      return;
-    }
-
-    if (cleanNewPassword !== cleanConfirm) {
-      setError("Passwords do not match.");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await authUpdatePassword(cleanNewPassword);
-      setSuccessNotice("Your password has been updated successfully. You can now sign in.");
-      setTimeout(() => {
-        setMode("login");
-        setPassword("");
-        setNewPassword("");
-        setConfirmPassword("");
-        if (typeof window !== "undefined") {
-          window.history.replaceState({}, "", "/login");
-        }
-      }, 2000);
-    } catch (err) {
-      setError(err?.message || "Failed to update password.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="login-shell">
-      <div className="login-card">
-        <div className="login-head">
-          <div className="login-brand">
-            <div className="brand-mark">
-              <Gem size={20} />
-            </div>
-            <span>Diamond Finance</span>
-          </div>
-          <h1>
-            {mode === "login"
-              ? "Sign in to Diamond Finance"
-              : mode === "forgot"
-              ? "Reset your password"
-              : "Set new password"}
-          </h1>
-          <p>
-            {mode === "login"
-              ? "Enter your credentials to access your finance workspace."
-              : mode === "forgot"
-              ? "Enter your account email to receive a secure password reset link."
-              : "Create a secure new password for your account."}
-          </p>
-        </div>
-
-        {error && (
-          <div className="login-error-banner" role="alert">
-            <AlertCircle size={16} style={{ flexShrink: 0 }} />
-            <span>{error}</span>
-          </div>
-        )}
-
-        {successNotice && (
-          <div className="notice" style={{ display: "flex", alignItems: "flex-start", gap: "8px", margin: 0 }}>
-            <CheckCircle2 size={16} color="var(--green)" style={{ flexShrink: 0, marginTop: "1px" }} />
-            <span style={{ fontSize: "12px", lineHeight: "1.4" }}>{successNotice}</span>
-          </div>
-        )}
-
-        {mode === "login" && (
-          <form className="login-form" onSubmit={handleLoginSubmit} noValidate>
-            <div className="login-field">
-              <label htmlFor="login-email">Email address</label>
-              <input
-                id="login-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="e.g. name@diamond.com"
-                autoComplete="email"
-                required
-                disabled={loading}
-              />
-            </div>
-
-            <div className="login-field">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <label htmlFor="login-password">Password</label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMode("forgot");
-                    setError("");
-                    setSuccessNotice("");
-                  }}
-                  style={{
-                    fontSize: "11px",
-                    color: "var(--blue)",
-                    fontWeight: 600,
-                    padding: 0,
-                  }}
-                >
-                  Forgot password?
-                </button>
-              </div>
-              <div className="login-password-wrap">
-                <input
-                  id="login-password"
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                  required
-                  disabled={loading}
-                />
-                <button
-                  type="button"
-                  className="password-toggle-btn"
-                  onClick={() => setShowPassword(!showPassword)}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                  tabIndex={-1}
-                >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              className="login-submit-btn"
-              disabled={loading}
-              aria-busy={loading}
-            >
-              {loading ? <span>Signing in...</span> : <span>Sign In</span>}
-            </button>
-          </form>
-        )}
-
-        {mode === "forgot" && (
-          <form className="login-form" onSubmit={handleForgotPasswordSubmit} noValidate>
-            <div className="login-field">
-              <label htmlFor="forgot-email">Account email address</label>
-              <input
-                id="forgot-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="e.g. name@diamond.com"
-                autoComplete="email"
-                required
-                disabled={loading}
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="login-submit-btn"
-              disabled={loading}
-              aria-busy={loading}
-            >
-              {loading ? <span>Sending Reset Link...</span> : <span>Send Reset Link</span>}
-            </button>
-
-            <button
-              type="button"
-              className="button secondary"
-              style={{ width: "100%", justifyContent: "center" }}
-              onClick={() => {
-                setMode("login");
-                setError("");
-                setSuccessNotice("");
-              }}
-              disabled={loading}
-            >
-              Back to Sign In
-            </button>
-          </form>
-        )}
-
-        {mode === "reset" && (
-          <form className="login-form" onSubmit={handleResetPasswordSubmit} noValidate>
-            <div className="login-field">
-              <label htmlFor="reset-new-password">New Password</label>
-              <div className="login-password-wrap">
-                <input
-                  id="reset-new-password"
-                  type={showNewPassword ? "text" : "password"}
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Minimum 6 characters"
-                  autoComplete="new-password"
-                  required
-                  disabled={loading}
-                />
-                <button
-                  type="button"
-                  className="password-toggle-btn"
-                  onClick={() => setShowNewPassword(!showNewPassword)}
-                  aria-label={showNewPassword ? "Hide password" : "Show password"}
-                  tabIndex={-1}
-                >
-                  {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </div>
-
-            <div className="login-field">
-              <label htmlFor="reset-confirm-password">Confirm New Password</label>
-              <input
-                id="reset-confirm-password"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Re-enter new password"
-                autoComplete="new-password"
-                required
-                disabled={loading}
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="login-submit-btn"
-              disabled={loading}
-              aria-busy={loading}
-            >
-              {loading ? <span>Updating Password...</span> : <span>Save New Password</span>}
-            </button>
-
-            <button
-              type="button"
-              className="button secondary"
-              style={{ width: "100%", justifyContent: "center" }}
-              onClick={() => {
-                setMode("login");
-                setError("");
-                setSuccessNotice("");
-                if (typeof window !== "undefined") {
-                  window.history.replaceState({}, "", "/login");
-                }
-              }}
-              disabled={loading}
-            >
-              Back to Sign In
-            </button>
-          </form>
-        )}
-
-        <div className="login-security-note">
-          <Lock size={12} />
-          <span>Protected finance workspace • Diamond Finance</span>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 createRoot(document.getElementById("root")).render(<App />);

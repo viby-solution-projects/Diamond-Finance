@@ -2704,3 +2704,60 @@ tr:last-child td {
     grid-template-columns: 1fr;
   }
 }
+
+/* ==============================================================================
+   22. APPLICATION FOOTER CREDIT & RESTRICTED ACCESS NOTE
+   ============================================================================== */
+.app-footer {
+  flex-shrink: 0;
+  width: 100%;
+  max-width: 1380px;
+  margin: 0 auto;
+  padding: 16px 34px calc(20px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  background: transparent;
+  box-sizing: border-box;
+  overflow-wrap: break-word;
+}
+
+.app-footer-text {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  max-width: 100%;
+}
+
+.app-footer-text a {
+  color: var(--muted);
+  font-weight: 700;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.app-footer-text a:hover {
+  color: var(--blue);
+  border-bottom-color: var(--blue);
+}
+
+.login-security-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  max-width: 100%;
+}
+
+@media (max-width: 768px) {
+  .app-footer {
+    justify-content: center;
+    text-align: center;
+    padding: 16px 16px calc(20px + env(safe-area-inset-bottom));
+  }
+}
